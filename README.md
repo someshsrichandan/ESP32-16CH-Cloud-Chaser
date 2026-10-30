@@ -156,7 +156,42 @@ Using two 8-channel bi-directional level shifters (e.g. TXS0108E):
 
 ---
 
-## 💻 Step 2: Next.js 16 Web Dashboard Setup
+## 📶 Step 2: First-Time WiFi Pairing (How the ESP32 Connects to your Router)
+
+Right after you flash the ESP32, you have **two easy ways** to connect it to your home WiFi:
+
+### Method A: Phone Hotspot Portal (Zero-Code, Recommended)
+1. **Power up the ESP32:** After flashing, the ESP32 starts its own WiFi setup network:
+   * **WiFi Name (SSID):** `ESP32_Relay_Chaser`
+   * **WiFi Password:** `12345678`
+2. **Connect your Phone or Laptop:** Go to your phone's WiFi settings and connect to `ESP32_Relay_Chaser`.
+3. **Open Setup Portal:** In your phone's browser, open:
+   👉 **`http://192.168.4.1`**
+4. **Select your Home WiFi:**
+   * Scroll down to the **WiFi Setup** section at the bottom.
+   * Tap **Scan** to see all available 2.4GHz home WiFi networks.
+   * Select your home router SSID, enter your home WiFi password, and click **Save & Connect**.
+5. **Connected Forever:** The ESP32 saves your WiFi credentials into internal flash memory (`Preferences` NVS). Even after you power off or unplug the ESP32, it will automatically reconnect to your home router in 3 seconds!
+
+### Method B: Pre-Configure in Arduino IDE Before Uploading
+If you prefer not to connect to the hotspot, you can pre-set your home WiFi directly at the top of [`ESP32_16CH_Relay_Chaser.ino`](ESP32_16CH_Relay_Chaser/ESP32_16CH_Relay_Chaser.ino):
+```cpp
+const char* DEFAULT_HOME_WIFI_SSID = "YourHomeWiFiName";
+const char* DEFAULT_HOME_WIFI_PASS = "YourHomeWiFiPassword";
+```
+When you flash the ESP32, it connects to your home WiFi router immediately on the very first boot!
+
+---
+
+### 🔑 How the Next.js Web Panel Links to your ESP32:
+* In the Next.js Web Panel, you **DO NOT** need to enter your WiFi password.
+* Instead, your ESP32 has a unique **Device ID** (e.g. `relay16_e465b8`, shown on the Serial Monitor or on the setup page).
+* In the Next.js Web Panel, click **Settings (⚙️)**, enter your **Device ID**, and click **Save & Connect**.
+* That's it! The Web Panel and your ESP32 link automatically through the Cloud MQTT tunnel with **Zero Port Forwarding**!
+
+---
+
+## 💻 Step 3: Next.js 16 Web Dashboard Setup
 
 ### Running Locally:
 ```bash
@@ -182,7 +217,7 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## 🌐 Step 3: Connecting Web Panel to ESP32
+## 🌐 Step 4: Connecting Web Panel to ESP32
 
 1. On the web dashboard, tap the **Settings Gear (⚙️)** in the top right.
 2. Choose **Connection Mode: Cloud MQTT**.
@@ -192,7 +227,7 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## 🎨 Step 4: Creating Dynamic Patterns (No Re-Flashing!)
+## 🎨 Step 5: Creating Dynamic Patterns (No Re-Flashing!)
 
 1. Switch to the **Dynamic FX Studio** tab.
 2. Use the **16-Channel Step Sequencer** (Channels 1–16 vs Steps 1–32) or select a preset:
@@ -221,3 +256,4 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 ## 📄 License
 
 MIT License. Designed with ❤️ for makers, IoT builders, and stage lighting enthusiasts.
+

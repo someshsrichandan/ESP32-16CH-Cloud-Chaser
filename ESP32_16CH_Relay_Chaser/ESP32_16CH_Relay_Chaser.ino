@@ -23,6 +23,10 @@ const char* AP_SSID_DEFAULT     = "ESP32_Relay_Chaser";
 const char* AP_PASSWORD_DEFAULT = "12345678";
 const char* MDNS_NAME           = "relay16";
 
+// Optional: Pre-set your home WiFi here (or leave empty "" to configure via hotspot at 192.168.4.1)
+const char* DEFAULT_HOME_WIFI_SSID = "";
+const char* DEFAULT_HOME_WIFI_PASS = "";
+
 // Free Public Cloud MQTT Broker (Outbound connection = NO PORT FORWARDING)
 const char* MQTT_BROKER_DEFAULT = "broker.emqx.io";
 const int   MQTT_PORT_DEFAULT   = 1883;
@@ -320,6 +324,12 @@ void initWiFi() {
   mqtt_broker = prefs.getString("broker", MQTT_BROKER_DEFAULT);
   mqtt_port   = prefs.getInt("port", MQTT_PORT_DEFAULT);
   prefs.end();
+
+  // If no credentials in NVS, fallback to code defaults if defined
+  if (sta_ssid.length() == 0 && strlen(DEFAULT_HOME_WIFI_SSID) > 0) {
+    sta_ssid = DEFAULT_HOME_WIFI_SSID;
+    sta_pass = DEFAULT_HOME_WIFI_PASS;
+  }
 
   // Start Access Point
   WiFi.softAP(AP_SSID_DEFAULT, AP_PASSWORD_DEFAULT, 1, 0, 4);
