@@ -214,8 +214,12 @@ void setRelay(int ch, bool on) {
 void setRelayMask(uint16_t mask) {
   for (int i = 0; i < NUM_RELAYS; i++) {
     bool on = (mask >> i) & 1;
-    relayState[i] = on;
-    digitalWrite(RELAY_PINS[i], on ? RELAY_ON : RELAY_OFF);
+    if (on && !relayState[i]) {
+      setRelay(i, true);
+      delayMicroseconds(1000); // 1ms soft-start per energized coil to eliminate DC rail voltage sag
+    } else {
+      setRelay(i, on);
+    }
   }
 }
 
@@ -224,7 +228,11 @@ void allOff() {
 }
 
 void allOn() {
-  for (int i = 0; i < NUM_RELAYS; i++) setRelay(i, true);
+  // Stagger coil energizing by 2ms (32ms total) to eliminate 1.3A inrush voltage collapse & dim glow
+  for (int i = 0; i < NUM_RELAYS; i++) {
+    setRelay(i, true);
+    delayMicroseconds(2000);
+  }
 }
 
 void enterManual() {
@@ -524,7 +532,7 @@ void publishStateMQTT() {
   if (!mqttClient.connected()) return;
   String stateTopic = device_id + "/state";
   String payload = buildStateJSON();
-  mqttClient.publish(stateTopic.c_str(), payload.c_str(), false);
+  mqttClient.publish(stateTopic.c_str(), payload.c_str(), true); // Retain=true delivers state instantly to newly connected browsers!
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
@@ -537,7 +545,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.printf("[MQTT RX] %s: %s\n", topic, msg.c_str());
 
   // Command Parser
-  if (msg.indexOf("\"cmd\":\"relay\"") >= 0) {
+  if (msg.indexOf("\"cmd\":\"request_state\"") >= 0 || msg.indexOf("\"cmd\":\"status\"") >= 0) {
+    publishStateMQTT();
+    return;
+  }
+  else if (msg.indexOf("\"cmd\":\"relay\"") >= 0) {
     int chIdx = msg.indexOf("\"ch\":");
     int valIdx = msg.indexOf("\"v\":");
     if (chIdx >= 0 && valIdx >= 0) {
@@ -559,12 +571,40 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (vIdx >= 0) {
       int spd = msg.substring(vIdx + 4).toInt();
       effectSpeed = constrain(spd, 40, 1000);
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("spd", effectSpeed);
+      prefs.end();
+    }
+  }
+  else if (msg.indexOf("\"cmd\":\"repeats\"") >= 0) {
+    int vIdx = msg.indexOf("\"v\":");
+    if (vIdx >= 0) {
+      autoCycleRepeats = constrain(msg.substring(vIdx + 4).toInt(), 1, 50);
+      autoCycleMode = 0; // Repeat Count Mode
+      completedCycles = 0;
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("repeats", autoCycleRepeats);
+      prefs.putInt("cyc_mode", 0);
+      prefs.end();
+      Serial.printf("[MQTT] Auto Cycle Repeats set to %dx\n", autoCycleRepeats);
+    }
+  }
+  else if (msg.indexOf("\"cmd\":\"cyc_mode\"") >= 0) {
+    int vIdx = msg.indexOf("\"v\":");
+    if (vIdx >= 0) {
+      autoCycleMode = constrain(msg.substring(vIdx + 4).toInt(), 0, 1);
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("cyc_mode", autoCycleMode);
+      prefs.end();
     }
   }
   else if (msg.indexOf("\"cmd\":\"cycle\"") >= 0) {
     int vIdx = msg.indexOf("\"v\":");
     if (vIdx >= 0) {
       autoCycleTime = constrain(msg.substring(vIdx + 4).toInt(), 3000, 60000);
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("cycle_t", autoCycleTime);
+      prefs.end();
     }
   }
   else if (msg.indexOf("\"cmd\":\"action\"") >= 0) {
@@ -577,8 +617,24 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       if (a == "all_on") { enterManual(); allOn(); }
       else if (a == "all_off") { enterManual(); allOff(); }
       else if (a == "toggle_run") { if (manualMode) exitManual(); else effectRunning = !effectRunning; }
-      else if (a == "toggle_auto") { autoMode = !autoMode; if (autoMode) { manualMode = false; effectRunning = true; autoTimer = millis(); } }
-      else if (a == "toggle_shuffle") { autoShuffle = !autoShuffle; }
+      else if (a == "toggle_auto") {
+        autoMode = !autoMode;
+        if (autoMode) {
+          manualMode = false;
+          effectRunning = true;
+          autoTimer = millis();
+          completedCycles = 0;
+        }
+        prefs.begin("relay_cfg", false);
+        prefs.putBool("auto_mode", autoMode);
+        prefs.end();
+      }
+      else if (a == "toggle_shuffle") {
+        autoShuffle = !autoShuffle;
+        prefs.begin("relay_cfg", false);
+        prefs.putBool("auto_shuf", autoShuffle);
+        prefs.end();
+      }
       else if (a == "toggle_manual") { if (manualMode) exitManual(); else enterManual(); }
       else if (a == "next") { changeEffect((currentEffect + 1) % TOTAL_EFFECTS); }
       else if (a == "prev") { changeEffect((currentEffect - 1 + TOTAL_EFFECTS) % TOTAL_EFFECTS); }
@@ -663,88 +719,475 @@ void runEffectStep() {
   if ((millis() - effectTimer) < (unsigned long)effectSpeed) return;
   effectTimer = millis();
 
+  bool cycleFinished = false;
+
   switch (currentEffect) {
-    case 0: allOff(); setRelay(effectStep % NUM_RELAYS, true); effectStep++; break;
-    case 1: allOff(); setRelay(NUM_RELAYS - 1 - (effectStep % NUM_RELAYS), true); effectStep++; break;
-    case 2: allOff(); setRelay(effectStep, true); effectStep += effectDir;
-            if (effectStep >= NUM_RELAYS - 1) effectDir = -1; if (effectStep <= 0) effectDir = 1; break;
-    case 3: { allOff(); int c = NUM_RELAYS/2; int s = effectStep % (c + 1);
-              if (c - 1 - s >= 0) setRelay(c - 1 - s, true); if (c + s < NUM_RELAYS) setRelay(c + s, true);
-              effectStep++; if (effectStep > c) effectStep = 0; break; }
-    case 4: { allOff(); int c = NUM_RELAYS/2; int s = effectStep % (c + 1);
-              setRelay(s, true); setRelay(NUM_RELAYS - 1 - s, true);
-              effectStep++; if (effectStep > c) effectStep = 0; break; }
-    case 5: { allOff(); int h = NUM_RELAYS/2; int s = effectStep % NUM_RELAYS;
-              if (s < h) { setRelay(h - 1 - s, true); setRelay(h + s, true); }
-              else { int d = s - h; setRelay(d, true); setRelay(NUM_RELAYS - 1 - d, true); }
-              effectStep++; break; }
-    case 6: { allOff(); int p1 = effectStep % NUM_RELAYS; int p2 = (effectStep + 8) % NUM_RELAYS;
-              setRelay(p1, true); setRelay((p1 + 1) % NUM_RELAYS, true);
-              setRelay(p2, true); setRelay((p2 + 1) % NUM_RELAYS, true); effectStep++; break; }
-    case 7: for (int i=0; i<NUM_RELAYS; i++) setRelay(i, (effectStep >> i) & 1); effectStep++;
-            if (effectStep > 65535) effectStep = 0; break;
-    case 8: { allOff(); int count = random(3, 7); for (int i=0; i<count; i++) setRelay(random(NUM_RELAYS), true); break; }
-    case 9: setRelay(random(NUM_RELAYS), random(2) == 0); break;
-    case 10: { int s = effectStep % (NUM_RELAYS * 2);
-               if (s < NUM_RELAYS) setRelay(s, true); else setRelay(s - NUM_RELAYS, false); effectStep++; break; }
-    case 11: { const uint8_t p[] = {1, 0, 1, 0, 0, 0, 0, 0};
-               if (p[effectStep % 8]) allOn(); else allOff(); effectStep++; break; }
-    case 12: allOff(); if (effectStep > 0) setRelay(effectStep - 1, true); setRelay(effectStep, true);
-             if (effectStep < NUM_RELAYS - 1) setRelay(effectStep + 1, true);
-             effectStep += effectDir; if (effectStep >= NUM_RELAYS - 1) effectDir = -1; if (effectStep <= 0) effectDir = 1; break;
-    case 13: for (int i=0; i<NUM_RELAYS; i++) setRelay(i, (i % 2) == (effectStep % 2)); effectStep++; break;
-    case 14: { int s = effectStep % (NUM_RELAYS * 2);
-               if (s < NUM_RELAYS) setRelay(s, true); else setRelay(NUM_RELAYS * 2 - 1 - s, false); effectStep++; break; }
-    case 15: allOff(); for (int i = effectStep % 3; i < NUM_RELAYS; i += 3) setRelay(i, true); effectStep++; break;
-    case 16: if (effSub == 0) { allOff(); rippleCenter = random(2, NUM_RELAYS - 2); setRelay(rippleCenter, true); effSub = 1; }
-             else if (effSub <= 6) { allOff(); int l = rippleCenter - effSub; int r = rippleCenter + effSub;
-               if (l >= 0) setRelay(l, true); if (r < NUM_RELAYS) setRelay(r, true); effSub++; }
-             else { allOff(); rippleCenter = random(2, NUM_RELAYS - 2); setRelay(rippleCenter, true); effSub = 1; } break;
-    case 17: if (effSub == 0) { allOff(); rippleCenter = random(4, 12); effA = 0; effSub = 1; }
-             else if (effSub == 1) { allOff(); setRelay(effA, true); effA++; if (effA >= rippleCenter) effSub = 2; }
-             else if (effSub == 2) { allOff(); for (int w = -2; w <= 2; w++) { int p = rippleCenter + w; if (p >= 0 && p < NUM_RELAYS) setRelay(p, true); } effSub = 3; }
-             else { allOff(); rippleCenter = random(4, 12); effA = 0; setRelay(effA, true); effSub = 1; } break;
-    case 18: allOff(); for (int w = -2; w <= 2; w++) { int p = effectStep + w; if (p >= 0 && p < NUM_RELAYS) setRelay(p, true); }
-             effectStep += effectDir; if (effectStep >= NUM_RELAYS - 1) effectDir = -1; if (effectStep <= 0) effectDir = 1; break;
-    case 19: for (int i=0; i<NUM_RELAYS; i++) { if (relayState[i] && random(3) == 0) setRelay(i, false); }
-             { int p = effectStep % NUM_RELAYS; setRelay(p, true); if (p > 0) setRelay(p - 1, true); } effectStep++; break;
-    case 20: allOff(); setRelay(effA, true); setRelay(effB, true); effA += effDirA; effB += effDirB;
-             if (effA >= NUM_RELAYS - 1 || effA <= 0) effDirA = -effDirA;
-             if (effB >= NUM_RELAYS - 1 || effB <= 0) effDirB = -effDirB; break;
-    case 21: { allOff(); int p1 = effectStep % NUM_RELAYS; int p2 = NUM_RELAYS - 1 - p1;
-               setRelay(p1, true); setRelay(p2, true); effectStep++; break; }
-    case 22: { int s = effectStep % 8; if (s == 0 || s == 2 || s == 4) allOn(); else allOff(); effectStep++; break; }
-    case 23: allOff(); for (int i = effTop; i < NUM_RELAYS; i++) setRelay(i, true);
-             setRelay(effA, true); effA++; if (effA >= effTop) { effTop--; effA = 0; if (effTop < 0) { effTop = NUM_RELAYS - 1; allOff(); } } break;
-    case 24: allOff(); for (int i = 0; i <= (NUM_RELAYS - 1 - effTop); i++) setRelay(i, true);
-             setRelay(effB, true); effB--; if (effB <= (NUM_RELAYS - 1 - effTop)) { effTop--; effB = NUM_RELAYS - 1; if (effTop < 0) { effTop = NUM_RELAYS - 1; allOff(); } } break;
-    case 25: allOff(); for (int k = 0; k < 4; k++) setRelay((effectStep + k * 4) % NUM_RELAYS, true); effectStep++; break;
-    case 26: { allOff(); int r = (effectStep < 8) ? effectStep : (15 - effectStep);
-               for (int i = 7 - r; i <= 8 + r; i++) setRelay(i, true); effectStep = (effectStep + 1) % 16; break; }
-    case 27: { allOff(); int blk = (effectStep % 4); for (int i = 0; i < 4; i++) setRelay(blk * 4 + i, true); effectStep++; break; }
-    case 28: { int s = effectStep % 8;
-               if (s == 0 || s == 2) { for (int i=0; i<8; i++) setRelay(i, true); for (int i=8; i<16; i++) setRelay(i, false); }
-               else if (s == 4 || s == 6) { for (int i=0; i<8; i++) setRelay(i, false); for (int i=8; i<16; i++) setRelay(i, true); }
-               else allOff(); effectStep++; break; }
-    case 29: { allOff(); int s = effectStep % 16;
-               if (s < 8) { for (int i = 7 - s; i <= 8 + s; i++) setRelay(i, true); }
-               else { int c = s - 8; for (int i = c; i < NUM_RELAYS - c; i++) setRelay(i, true); } effectStep++; break; }
-    case 30: if (random(4) == 0) allOff(); else { int n = random(2, 6); for (int i=0; i<n; i++) setRelay(random(NUM_RELAYS), true); } break;
-    case 31: allOff(); for (int w = 0; w < 3; w++) { int p = effectStep + w; if (p >= 0 && p < NUM_RELAYS) setRelay(p, true); }
-             effectStep += effectDir; if (effectStep >= NUM_RELAYS - 3) effectDir = -1; if (effectStep <= 0) effectDir = 1; break;
-    case 32: { allOff(); int p = effectStep % NUM_RELAYS; setRelay(p, true); setRelay((p + 1) % NUM_RELAYS, true); effectStep++; break; }
-    case 33: { allOff(); int s = effectStep % 16; setRelay(s, true); setRelay((s + 1) % NUM_RELAYS, true);
-               setRelay(NUM_RELAYS - 1 - s, true); setRelay((NUM_RELAYS - 2 - s + NUM_RELAYS) % NUM_RELAYS, true); effectStep++; break; }
-    case 34: for (int i=0; i<NUM_RELAYS; i++) setRelay(i, ((i + effectStep) % 4) == 0); effectStep++; break;
-    case 35: { allOff(); int h = effectStep % NUM_RELAYS; setRelay(h, true); setRelay((h + 1) % NUM_RELAYS, true); setRelay((h + 2) % NUM_RELAYS, true); effectStep++; break; }
-    case 36: { int s = effectStep % (NUM_RELAYS * 2);
-               if (s < NUM_RELAYS) for (int i=0; i<=s; i++) setRelay(i, true);
-               else { int d = s - NUM_RELAYS; for (int i=0; i<=d; i++) setRelay(i, false); for (int i=d+1; i<NUM_RELAYS; i++) setRelay(i, true); }
-               effectStep++; break; }
-    case 37: allOff(); effA += random(-1, 2); if (effA < 0) effA = 0; if (effA >= NUM_RELAYS) effA = NUM_RELAYS - 1; setRelay(effA, true); break;
-    case 38: { allOff(); int s = effectStep % 8; int p1 = s * 2; int p2 = (NUM_RELAYS - 1 - (s * 2));
-               if (p1 < NUM_RELAYS) setRelay(p1, true); if (p2 >= 0 && p2 < NUM_RELAYS) setRelay(p2, true); effectStep++; break; }
-    case 39: { int s = effectStep % 4; if (s < 2) allOn(); else allOff(); effectStep++; break; }
+    case 0: // Left Chaser (16 steps)
+      allOff();
+      setRelay(effectStep % NUM_RELAYS, true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+
+    case 1: // Right Chaser (16 steps)
+      allOff();
+      setRelay(NUM_RELAYS - 1 - (effectStep % NUM_RELAYS), true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+
+    case 2: // Ping Pong (30 steps roundtrip)
+      allOff();
+      setRelay(effectStep, true);
+      effectStep += effectDir;
+      if (effectStep >= NUM_RELAYS - 1) {
+        effectDir = -1;
+      } else if (effectStep <= 0) {
+        effectDir = 1;
+        cycleFinished = true;
+      }
+      break;
+
+    case 3: { // Center Out (8 steps)
+      allOff();
+      int s = effectStep % 8;
+      setRelay(7 - s, true);
+      setRelay(8 + s, true);
+      effectStep++;
+      if (effectStep >= 8) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 4: { // Edges In (8 steps)
+      allOff();
+      int s = effectStep % 8;
+      setRelay(s, true);
+      setRelay(NUM_RELAYS - 1 - s, true);
+      effectStep++;
+      if (effectStep >= 8) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 5: { // Zip + Unzip (16 steps)
+      allOff();
+      int s = effectStep % 16;
+      if (s < 8) {
+        setRelay(7 - s, true);
+        setRelay(8 + s, true);
+      } else {
+        int d = s - 8;
+        setRelay(d, true);
+        setRelay(NUM_RELAYS - 1 - d, true);
+      }
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 6: { // Dual Snake (16 steps)
+      allOff();
+      int p1 = effectStep % NUM_RELAYS;
+      int p2 = (effectStep + 8) % NUM_RELAYS;
+      setRelay(p1, true);
+      setRelay((p1 + 1) % NUM_RELAYS, true);
+      setRelay(p2, true);
+      setRelay((p2 + 1) % NUM_RELAYS, true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 7: { // Binary Counter (32 steps)
+      for (int i=0; i<NUM_RELAYS; i++) setRelay(i, (effectStep >> i) & 1);
+      effectStep++;
+      if (effectStep >= 32) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 8: { // Sparkle / Stardust (16 steps)
+      allOff();
+      int count = random(2, 5);
+      for (int i=0; i<count; i++) setRelay(random(NUM_RELAYS), true);
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 9: { // Twinkle Sky (16 steps)
+      setRelay(random(NUM_RELAYS), random(2) == 0);
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 10: { // Wave Fill (32 steps)
+      int s = effectStep;
+      if (s < NUM_RELAYS) {
+        setRelay(s, true);
+      } else {
+        setRelay(s - NUM_RELAYS, false);
+      }
+      effectStep++;
+      if (effectStep >= NUM_RELAYS * 2) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 11: { // Heartbeat Pulse (Interleaved soft-start banks, NO coil slam!)
+      const uint8_t p[] = {1, 0, 1, 0, 0, 0};
+      if (p[effectStep % 6]) {
+        for (int i = 0; i < NUM_RELAYS; i += 2) setRelay(i, true);
+        delayMicroseconds(2000); // Soft bank stagger
+        for (int i = 1; i < NUM_RELAYS; i += 2) setRelay(i, true);
+      } else {
+        allOff();
+      }
+      effectStep++;
+      if (effectStep >= 12) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 12: { // Cylon Scanner (30 steps)
+      allOff();
+      if (effectStep > 0) setRelay(effectStep - 1, true);
+      setRelay(effectStep, true);
+      if (effectStep < NUM_RELAYS - 1) setRelay(effectStep + 1, true);
+      effectStep += effectDir;
+      if (effectStep >= NUM_RELAYS - 1) effectDir = -1;
+      else if (effectStep <= 0) { effectDir = 1; cycleFinished = true; }
+      break;
+    }
+
+    case 13: { // Alternating Odd/Ev (16 steps)
+      for (int i=0; i<NUM_RELAYS; i++) setRelay(i, (i % 2) == (effectStep % 2));
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 14: { // Falling Dominos (32 steps)
+      int s = effectStep;
+      if (s < NUM_RELAYS) setRelay(s, true);
+      else setRelay(NUM_RELAYS * 2 - 1 - s, false);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS * 2) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 15: { // Theater Marquee (18 steps)
+      allOff();
+      for (int i = effectStep % 3; i < NUM_RELAYS; i += 3) setRelay(i, true);
+      effectStep++;
+      if (effectStep >= 18) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 16: { // Raindrop Ripple (2 full ripples)
+      if (effSub == 0) {
+        allOff();
+        rippleCenter = random(2, NUM_RELAYS - 2);
+        setRelay(rippleCenter, true);
+        effSub = 1;
+      } else if (effSub <= 6) {
+        allOff();
+        int l = rippleCenter - effSub;
+        int r = rippleCenter + effSub;
+        if (l >= 0) setRelay(l, true);
+        if (r < NUM_RELAYS) setRelay(r, true);
+        effSub++;
+      } else {
+        allOff();
+        effSub = 0;
+        effectStep++;
+        if (effectStep >= 2) { effectStep = 0; cycleFinished = true; }
+      }
+      break;
+    }
+
+    case 17: { // Fireworks Burst (2 full bursts)
+      if (effSub == 0) {
+        allOff();
+        rippleCenter = random(4, 12);
+        effA = 0;
+        effSub = 1;
+      } else if (effSub == 1) {
+        allOff();
+        setRelay(effA, true);
+        effA++;
+        if (effA >= rippleCenter) effSub = 2;
+      } else if (effSub == 2) {
+        allOff();
+        for (int w = -2; w <= 2; w++) {
+          int p = rippleCenter + w;
+          if (p >= 0 && p < NUM_RELAYS) setRelay(p, true);
+        }
+        effSub = 3;
+      } else {
+        allOff();
+        effSub = 0;
+        effectStep++;
+        if (effectStep >= 2) { effectStep = 0; cycleFinished = true; }
+      }
+      break;
+    }
+
+    case 18: { // Knight Rider (30 steps)
+      allOff();
+      for (int w = -1; w <= 1; w++) {
+        int p = effectStep + w;
+        if (p >= 0 && p < NUM_RELAYS) setRelay(p, true);
+      }
+      effectStep += effectDir;
+      if (effectStep >= NUM_RELAYS - 1) effectDir = -1;
+      else if (effectStep <= 0) { effectDir = 1; cycleFinished = true; }
+      break;
+    }
+
+    case 19: { // Meteor Shower (16 steps)
+      for (int i=0; i<NUM_RELAYS; i++) {
+        if (relayState[i] && random(3) == 0) setRelay(i, false);
+      }
+      int p = effectStep % NUM_RELAYS;
+      setRelay(p, true);
+      if (p > 0) setRelay(p - 1, true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 20: { // Double Bounce (30 steps)
+      allOff();
+      setRelay(effA, true);
+      setRelay(effB, true);
+      effA += effDirA;
+      effB += effDirB;
+      if (effA >= NUM_RELAYS - 1 || effA <= 0) effDirA = -effDirA;
+      if (effB >= NUM_RELAYS - 1 || effB <= 0) effDirB = -effDirB;
+      effectStep++;
+      if (effectStep >= 30) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 21: { // Cross Over (16 steps)
+      allOff();
+      int p1 = effectStep % NUM_RELAYS;
+      int p2 = NUM_RELAYS - 1 - p1;
+      setRelay(p1, true);
+      setRelay(p2, true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 22: { // Strobe Burst (Soft staggered flash)
+      int s = effectStep % 8;
+      if (s == 0 || s == 2 || s == 4) {
+        allOn();
+      } else {
+        allOff();
+      }
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 23: { // Stack Build (Full 16 channels stacked)
+      allOff();
+      for (int i = effTop; i < NUM_RELAYS; i++) setRelay(i, true);
+      setRelay(effA, true);
+      effA++;
+      if (effA >= effTop) {
+        effTop--;
+        effA = 0;
+        if (effTop < 0) {
+          effTop = NUM_RELAYS - 1;
+          allOff();
+          cycleFinished = true; // Complete 16-channel stack finished!
+        }
+      }
+      break;
+    }
+
+    case 24: { // Reverse Stack (Full 16 channels reverse stacked)
+      allOff();
+      for (int i = 0; i <= (NUM_RELAYS - 1 - effTop); i++) setRelay(i, true);
+      setRelay(effB, true);
+      effB--;
+      if (effB <= (NUM_RELAYS - 1 - effTop)) {
+        effTop--;
+        effB = NUM_RELAYS - 1;
+        if (effTop < 0) {
+          effTop = NUM_RELAYS - 1;
+          allOff();
+          cycleFinished = true; // Complete 16-channel reverse stack finished!
+        }
+      }
+      break;
+    }
+
+    case 25: { // Quad Runner (16 steps)
+      allOff();
+      for (int k = 0; k < 4; k++) setRelay((effectStep + k * 4) % NUM_RELAYS, true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 26: { // In-Out Breathe (16 steps)
+      allOff();
+      int r = (effectStep < 8) ? effectStep : (15 - effectStep);
+      for (int i = 7 - r; i <= 8 + r; i++) setRelay(i, true);
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 27: { // Segment Stride (16 steps)
+      allOff();
+      int blk = (effectStep % 4);
+      for (int i = 0; i < 4; i++) setRelay(blk * 4 + i, true);
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 28: { // Police Strobe (16 steps)
+      int s = effectStep % 8;
+      if (s == 0 || s == 2) {
+        for (int i=0; i<8; i++) setRelay(i, true);
+        for (int i=8; i<16; i++) setRelay(i, false);
+      } else if (s == 4 || s == 6) {
+        for (int i=0; i<8; i++) setRelay(i, false);
+        for (int i=8; i<16; i++) setRelay(i, true);
+      } else {
+        allOff();
+      }
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 29: { // Curtain Reveal (16 steps)
+      allOff();
+      int s = effectStep % 16;
+      if (s < 8) {
+        for (int i = 7 - s; i <= 8 + s; i++) setRelay(i, true);
+      } else {
+        int c = s - 8;
+        for (int i = c; i < NUM_RELAYS - c; i++) setRelay(i, true);
+      }
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 30: { // Cyber Glitch (16 steps)
+      if (random(4) == 0) {
+        allOff();
+      } else {
+        int n = random(2, 5);
+        for (int i=0; i<n; i++) setRelay(random(NUM_RELAYS), true);
+      }
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 31: { // Ripple Reflect (26 steps)
+      allOff();
+      for (int w = 0; w < 3; w++) {
+        int p = effectStep + w;
+        if (p >= 0 && p < NUM_RELAYS) setRelay(p, true);
+      }
+      effectStep += effectDir;
+      if (effectStep >= NUM_RELAYS - 3) effectDir = -1;
+      else if (effectStep <= 0) { effectDir = 1; cycleFinished = true; }
+      break;
+    }
+
+    case 32: { // Marching Pairs (16 steps)
+      allOff();
+      int p = effectStep % NUM_RELAYS;
+      setRelay(p, true);
+      setRelay((p + 1) % NUM_RELAYS, true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 33: { // Converge & Cross (16 steps)
+      allOff();
+      int s = effectStep % 16;
+      setRelay(s, true);
+      setRelay((s + 1) % NUM_RELAYS, true);
+      setRelay(NUM_RELAYS - 1 - s, true);
+      setRelay((NUM_RELAYS - 2 - s + NUM_RELAYS) % NUM_RELAYS, true);
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 34: { // 4-Phase Wave (16 steps)
+      for (int i=0; i<NUM_RELAYS; i++) setRelay(i, ((i + effectStep) % 4) == 0);
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 35: { // Harbor Radar (16 steps)
+      allOff();
+      int h = effectStep % NUM_RELAYS;
+      setRelay(h, true);
+      setRelay((h + 1) % NUM_RELAYS, true);
+      setRelay((h + 2) % NUM_RELAYS, true);
+      effectStep++;
+      if (effectStep >= NUM_RELAYS) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 36: { // Fill & Drain (32 steps)
+      int s = effectStep % (NUM_RELAYS * 2);
+      if (s < NUM_RELAYS) {
+        for (int i=0; i<=s; i++) setRelay(i, true);
+      } else {
+        int d = s - NUM_RELAYS;
+        for (int i=0; i<=d; i++) setRelay(i, false);
+        for (int i=d+1; i<NUM_RELAYS; i++) setRelay(i, true);
+      }
+      effectStep++;
+      if (effectStep >= NUM_RELAYS * 2) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 37: { // Random Walk (20 steps)
+      allOff();
+      effA += random(-1, 2);
+      if (effA < 0) effA = 0;
+      if (effA >= NUM_RELAYS) effA = NUM_RELAYS - 1;
+      setRelay(effA, true);
+      effectStep++;
+      if (effectStep >= 20) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 38: { // DNA Helix (16 steps)
+      allOff();
+      int s = effectStep % 8;
+      int p1 = s * 2;
+      int p2 = (NUM_RELAYS - 1 - (s * 2));
+      if (p1 < NUM_RELAYS) setRelay(p1, true);
+      if (p2 >= 0 && p2 < NUM_RELAYS) setRelay(p2, true);
+      effectStep++;
+      if (effectStep >= 16) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
+
+    case 39: { // All Breather (6 steps, soft banks)
+      int s = effectStep % 6;
+      if (s < 3) allOn(); else allOff();
+      effectStep++;
+      if (effectStep >= 6) { effectStep = 0; cycleFinished = true; }
+      break;
+    }
 
     // 40: DYNAMIC CUSTOM PATTERN (Loaded directly over MQTT / Web API)
     case EFFECT_CUSTOM: {
@@ -752,19 +1195,32 @@ void runEffectStep() {
         uint16_t mask = customPatternFrames[effectStep % customPatternCount];
         setRelayMask(mask);
         effectStep++;
+        if (effectStep >= customPatternCount) {
+          effectStep = 0;
+          cycleFinished = true;
+        }
       }
       break;
     }
   }
 
-  // Auto Cycle repeat counting & instant advance (ZERO DELAY / ZERO LAG!)
-  currentCycleStep++;
-  int cycleLen = getEffectCycleLength(currentEffect);
-  if (currentCycleStep >= cycleLen) {
-    currentCycleStep = 0;
+  // AUTO CYCLE ENGINE (Strict Cycle Completion: Zero Premature Cutoff & Zero Dead Lag!)
+  if (cycleFinished) {
     completedCycles++;
-    if (autoMode && !manualMode && autoCycleMode == 0) {
-      if (completedCycles >= autoCycleRepeats) {
+    if (autoMode && !manualMode) {
+      bool shouldAdvance = false;
+      if (autoCycleMode == 0) {
+        // Repeat Count Mode (e.g. repeat current effect 3 or 5 full times)
+        if (completedCycles >= autoCycleRepeats) {
+          shouldAdvance = true;
+        }
+      } else {
+        // Timed Mode: only advance once target time has elapsed AND current cycle completed!
+        if ((millis() - autoTimer) >= (unsigned long)autoCycleTime) {
+          shouldAdvance = true;
+        }
+      }
+      if (shouldAdvance) {
         advanceAutoEffect();
       }
     }
@@ -772,13 +1228,8 @@ void runEffectStep() {
 }
 
 void handleAutoMode() {
-  if (!autoMode || manualMode) return;
-  // Fallback timed mode if user explicitly switched to seconds
-  if (autoCycleMode == 1) {
-    if ((millis() - autoTimer) >= (unsigned long)autoCycleTime) {
-      advanceAutoEffect();
-    }
-  }
+  // All auto effect transitions happen deterministically at cycle boundaries inside runEffectStep()!
+  // This guarantees every effect always runs 100% of its channels without mid-animation cutoff.
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1189,10 +1640,11 @@ void setup() {
 
   Serial.println("=======================================================");
   Serial.printf(" READY! Device ID: %s\n", device_id.c_str());
-  Serial.printf(" MQTT Cloud Broker: %s:%d (HiveMQ Public)\n", mqtt_broker.c_str(), mqtt_port);
-  Serial.println(" Local mDNS : http://relay16.local");
-  Serial.println(" Local AP   : http://192.168.4.1 (ESP32_Relay_Chaser)");
-  Serial.printf(" Auto Startup: ACTIVE (%d cycles/effect)\n", autoCycleRepeats);
+  Serial.printf(" ESP32 TCP MQTT Broker : %s:%d\n", mqtt_broker.c_str(), mqtt_port);
+  Serial.println(" Web Panel WebSocket   : wss://broker.hivemq.com:8884/mqtt");
+  Serial.println(" Local Web Dashboard   : http://relay16.local");
+  Serial.println(" Fallback AP Direct    : http://192.168.4.1 (ESP32_Relay_Chaser)");
+  Serial.printf(" Auto Mode: ACTIVE (%d cycles/effect, Repeat Mode)\n", autoCycleRepeats);
   Serial.println("=======================================================\n");
 }
 

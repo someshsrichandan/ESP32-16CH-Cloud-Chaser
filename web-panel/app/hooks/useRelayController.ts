@@ -52,6 +52,30 @@ const DEFAULT_STATE: DeviceState = {
   },
 };
 
+export function sanitizeBrokerWsUrl(raw: string): string {
+  let u = (raw || "").trim();
+  if (!u || u.includes("emqx.io")) {
+    return "wss://broker.hivemq.com:8884/mqtt";
+  }
+  // If user entered HiveMQ host with port 1883 or bare host:
+  if (u.includes("broker.hivemq.com")) {
+    return "wss://broker.hivemq.com:8884/mqtt";
+  }
+  // If user typed mqtt:// or tcp://, convert to wss:// or ws://
+  if (u.startsWith("tcp://") || u.startsWith("mqtt://")) {
+    u = u.replace(/^tcp:\/\//, "ws://").replace(/^mqtt:\/\//, "ws://");
+  }
+  // If it ends with :1883 (TCP port), convert to WebSocket port
+  if (u.endsWith(":1883")) {
+    return "wss://broker.hivemq.com:8884/mqtt";
+  }
+  // If missing ws/wss scheme, prepend wss://
+  if (!u.startsWith("ws://") && !u.startsWith("wss://")) {
+    u = `wss://${u}`;
+  }
+  return u;
+}
+
 export function useRelayController() {
   const [state, setState] = useState<DeviceState>(DEFAULT_STATE);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("cloud");
@@ -76,12 +100,9 @@ export function useRelayController() {
       if (savedIp) setLocalIp(savedIp);
 
       const savedBroker = localStorage.getItem("relay_broker_ws");
-      if (savedBroker && !savedBroker.includes("emqx.io")) {
-        setBrokerWsUrl(savedBroker);
-      } else {
-        setBrokerWsUrl("wss://broker.hivemq.com:8884/mqtt");
-        localStorage.setItem("relay_broker_ws", "wss://broker.hivemq.com:8884/mqtt");
-      }
+      const cleanBroker = sanitizeBrokerWsUrl(savedBroker || "wss://broker.hivemq.com:8884/mqtt");
+      setBrokerWsUrl(cleanBroker);
+      localStorage.setItem("relay_broker_ws", cleanBroker);
     } catch {
       // Ignore in SSR
     }
@@ -196,6 +217,10 @@ export function useRelayController() {
           url = `http://${localIp}/api/cycle?v=${payload.v}`;
         } else if (cmd === "action") {
           url = `http://${localIp}/api/cmd?a=${payload.a}`;
+        } else if (cmd === "repeats") {
+          url = `http://${localIp}/api/repeats?v=${payload.v}`;
+        } else if (cmd === "cyc_mode") {
+          url = `http://${localIp}/api/cycmode?v=${payload.v}`;
         }
         fetch(url, { mode: "no-cors" }).catch(() => {});
       }
@@ -338,15 +363,16 @@ export function useRelayController() {
   );
 
   const updateConfig = (newDevId: string, newMode: ConnectionMode, newIp: string, newBroker: string) => {
+    const cleanBroker = sanitizeBrokerWsUrl(newBroker);
     setDeviceId(newDevId);
     setConnectionMode(newMode);
     setLocalIp(newIp);
-    setBrokerWsUrl(newBroker);
+    setBrokerWsUrl(cleanBroker);
 
     localStorage.setItem("relay_device_id", newDevId);
     localStorage.setItem("relay_mode", newMode);
     localStorage.setItem("relay_local_ip", newIp);
-    localStorage.setItem("relay_broker_ws", newBroker);
+    localStorage.setItem("relay_broker_ws", cleanBroker);
   };
 
   return {

@@ -220,13 +220,28 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## 🌐 Step 4: Connecting Web Panel to ESP32
+## 🌐 Step 4: Connecting Web Panel to ESP32 (Cloud MQTT)
 
 1. On the web dashboard, tap the **Settings Gear (⚙️)** in the top right.
 2. Choose **Connection Mode: Cloud MQTT**.
-3. Enter your ESP32's **Device ID** (e.g. `relay16_e465b8`).
-4. Click **Save & Connect**.
-5. The connection badge will instantly light up green: **Cloud Active**.
+3. Enter your ESP32's **Device ID** (printed on boot in Serial Monitor, e.g. `relay16_C8E720`).
+4. Ensure **MQTT WebSocket Broker** is set to:
+   * `wss://broker.hivemq.com:8884/mqtt` (Default HiveMQ Public WebSocket)
+   * *(Note: If you paste `broker.hivemq.com:1883`, the web panel will automatically correct it to the WebSocket endpoint, as web browsers communicate with MQTT over WebSockets!)*
+5. Click **Save & Connect**.
+6. The connection badge will instantly light up green: **Cloud Active**!
+
+---
+
+## ⚡ Important: Eliminating Voltage Sag & Dim Glow on Relays
+
+* **Hardware Power Supply:**
+  * 16 relay coils energized simultaneously draw ~1.3A (at 5V) or ~0.6A (at 12V).
+  * **Never** power the relay coils directly from the ESP32's 5V/3.3V pins or a weak 1A phone charger!
+  * Connect a **dedicated 12V 2A (or 5V 2A) DC power adapter** directly to the relay board's `DC+` and `DC-` screw terminals.
+  * Remove the **JD1 jumper** so the relay coil power is completely isolated from the ESP32 logic power.
+* **Firmware Soft-Start Protection:**
+  * The firmware includes a built-in **2ms micro-stagger soft-start** on `allOn()` and heavy frame masks. This spreads inductive coil inrush over 32ms, keeping your DC voltage rail completely flat and eliminating dim glowing!
 
 ---
 

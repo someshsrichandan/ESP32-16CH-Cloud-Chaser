@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { ConnectionMode } from "../types";
-import { X, Cloud, Server, HelpCircle, Save, ExternalLink } from "lucide-react";
+import { X, Cloud, Server, HelpCircle, Save, ExternalLink, Sparkles, CheckCircle2 } from "lucide-react";
+import { sanitizeBrokerWsUrl } from "../hooks/useRelayController";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -30,9 +31,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
+  const isBroker1883 = broker.includes("1883") || broker === "broker.hivemq.com";
+
   const handleSave = () => {
-    onSaveConfig(devId.trim(), mode, localIp.trim(), broker.trim());
+    const cleanBroker = sanitizeBrokerWsUrl(broker);
+    onSaveConfig(devId.trim(), mode, localIp.trim(), cleanBroker);
     onClose();
+  };
+
+  const handleSetHiveMQDefault = () => {
+    setBroker("wss://broker.hivemq.com:8884/mqtt");
   };
 
   return (
@@ -114,9 +122,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">
-                MQTT WebSocket Broker
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold text-slate-300">
+                  MQTT WebSocket Broker
+                </label>
+                <button
+                  type="button"
+                  onClick={handleSetHiveMQDefault}
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 underline flex items-center gap-1 font-semibold"
+                >
+                  <Sparkles className="w-3 h-3" /> HiveMQ Default
+                </button>
+              </div>
               <input
                 type="text"
                 value={broker}
@@ -124,15 +141,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 placeholder="wss://broker.hivemq.com:8884/mqtt"
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
               />
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                Default: <code>wss://broker.hivemq.com:8884/mqtt</code> (HiveMQ enterprise public cloud broker).
-              </span>
+              {isBroker1883 ? (
+                <div className="mt-1.5 p-2 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-[10px] text-emerald-300 flex items-start gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Smart Auto-Fix:</strong> Web browsers use WebSockets. Port <code>1883</code> is ESP32 TCP; on Save it will auto-connect via <code>wss://broker.hivemq.com:8884/mqtt</code>!
+                  </span>
+                </div>
+              ) : (
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  Default: <code>wss://broker.hivemq.com:8884/mqtt</code> (HiveMQ enterprise public cloud broker).
+                </span>
+              )}
             </div>
 
             <div className="flex items-start gap-2 p-2.5 bg-cyan-950/20 border border-cyan-800/30 rounded-lg text-[11px] text-cyan-200/90 leading-relaxed">
               <HelpCircle className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
               <span>
-                <strong>Why Zero Port Forwarding?</strong> The ESP32 maintains an outbound TLS/TCP socket to the MQTT cloud. Your home router automatically allows outbound traffic, so you never have to open ports or expose your IP!
+                <strong>Why Zero Port Forwarding?</strong> The ESP32 maintains an outbound TLS/TCP socket to HiveMQ. Your home router automatically allows outbound traffic, so you never have to open ports or expose your IP!
               </span>
             </div>
           </div>
