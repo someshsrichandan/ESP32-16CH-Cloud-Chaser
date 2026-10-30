@@ -9,6 +9,9 @@ export interface DeviceState {
   m: number;               // Manual mode (1 or 0)
   c: number;               // Auto cycle time (seconds)
   cd: number;              // Countdown seconds remaining
+  reps?: number;           // Target repeat cycles per effect (1..50, default 3)
+  cur_rep?: number;        // Current cycle number being executed (1..reps)
+  cyc_mode?: number;       // Cycle mode: 0 = By Repeats, 1 = By Time
   temp: number;            // CPU temperature in Celsius
   heap: number;            // Free heap memory in bytes
   uptime: number;          // System uptime in seconds

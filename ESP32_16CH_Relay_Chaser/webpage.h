@@ -103,7 +103,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
 <header>
   <h1>&#9889; ESP32 &#215; 16-CH RELAY PRO</h1>
-  <div class="sub">40 FX &bull; Dual WiFi &bull; Auto Continuous &bull; Cool-Run v9.0</div>
+  <div class="sub">40 FX &bull; Cycle Repeats (Zero-Lag) &bull; HiveMQ Cloud IoT &bull; Cool-Run v10.0</div>
 </header>
 
 <div class="wrap">
@@ -118,6 +118,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
       <span class="badge b-purple" id="fx-name">Left Chaser</span>
       <span class="badge b-cyan" id="speed-tag">120ms</span>
       <span class="badge b-green" id="mode-tag">FX Mode</span>
+      <span class="badge b-purple" id="cyc-tag">&#8635; Cycle 1/3</span>
       <span class="badge b-amber" id="temp-tag">--&deg;C</span>
       <span class="badge" id="ip-tag">&#127760; 192.168.4.1</span>
     </div>
@@ -152,17 +153,41 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
       <button class="btn btn-amber" id="btn-man" onclick="cmd('toggle_manual')">Manual Mode</button>
     </div>
 
-    <!-- Sliders -->
-    <div class="sliders">
-      <div class="slider-group">
-        <label>&#9889; FX Speed</label>
-        <input type="range" id="sl-spd" min="40" max="600" value="120" oninput="onSpeedChange(this.value)">
-        <span class="slider-val" id="val-spd">120ms</span>
+    <!-- Cycle Repeat & Auto Continuous Settings -->
+    <div style="margin-top:12px; padding:12px; background:#0b0e22; border:1px solid #1a2245; border-radius:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+        <span style="font-size:0.75rem; font-weight:800; color:#38bdf8; text-transform:uppercase;">&#8635; Repeat Cycles Per Effect (Auto-Advance):</span>
+        <button class="btn btn-dark" id="btn-cycmode" style="padding:4px 10px; font-size:0.7rem;" onclick="toggleCycMode()">Mode: Repeat Count</button>
       </div>
-      <div class="slider-group">
-        <label>&#8635; Auto Cycle Duration</label>
-        <input type="range" id="sl-cyc" min="3" max="60" value="8" oninput="onCycleChange(this.value)">
-        <span class="slider-val" id="val-cyc">8s</span>
+
+      <!-- Quick Preset Repeat Buttons -->
+      <div class="btn-row" id="rep-buttons" style="margin-bottom:8px;">
+        <button class="btn btn-dark" id="rep-1" onclick="setRepeats(1)">1x</button>
+        <button class="btn btn-dark" id="rep-2" onclick="setRepeats(2)">2x</button>
+        <button class="btn btn-dark" id="rep-3" onclick="setRepeats(3)">3x</button>
+        <button class="btn btn-dark" id="rep-4" onclick="setRepeats(4)">4x</button>
+        <button class="btn btn-dark" id="rep-5" onclick="setRepeats(5)">5x</button>
+        <button class="btn btn-dark" id="rep-8" onclick="setRepeats(8)">8x</button>
+        <button class="btn btn-dark" id="rep-10" onclick="setRepeats(10)">10x</button>
+      </div>
+
+      <!-- Sliders -->
+      <div class="sliders" style="margin-top:0; padding:6px; background:#070915;">
+        <div class="slider-group">
+          <label>&#9889; FX Speed</label>
+          <input type="range" id="sl-spd" min="40" max="600" value="120" oninput="onSpeedChange(this.value)">
+          <span class="slider-val" id="val-spd">120ms</span>
+        </div>
+        <div class="slider-group" id="group-reps">
+          <label>&#8635; Cycles / Effect</label>
+          <input type="range" id="sl-reps" min="1" max="20" value="3" oninput="onRepeatsChange(this.value)">
+          <span class="slider-val" id="val-reps">3x</span>
+        </div>
+        <div class="slider-group" id="group-cyc" style="display:none;">
+          <label>&#9201; Timed Seconds</label>
+          <input type="range" id="sl-cyc" min="3" max="60" value="8" oninput="onCycleChange(this.value)">
+          <span class="slider-val" id="val-cyc">8s</span>
+        </div>
       </div>
     </div>
   </div>
@@ -323,6 +348,21 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
     fetch('/api/cycle?v=' + (val * 1000));
   };
 
+  var setRepeats = function(val) {
+    var num = parseInt(val);
+    document.getElementById('val-reps').textContent = num + 'x';
+    fetch('/api/repeats?v=' + num).then(function(r){ return r.json(); }).then(renderState);
+  };
+
+  var onRepeatsChange = function(val) {
+    setRepeats(val);
+  };
+
+  var toggleCycMode = function() {
+    var newMode = (state.cyc_mode === 0) ? 1 : 0;
+    fetch('/api/cycmode?v=' + newMode).then(function(r){ return r.json(); }).then(renderState);
+  };
+
   var toggleGuide = function() {
     var el = document.getElementById('guide-section');
     el.style.display = (el.style.display === 'none') ? 'block' : 'none';
@@ -419,12 +459,57 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
     var cst = document.getElementById('cloud-status-tag');
     var dcs = document.getElementById('disp-cloud-st');
     if (d.mqtt && d.mqtt.connected) {
-      if (cst) { cst.className = 'badge b-cyan'; cst.innerHTML = '&#9729; Cloud: Online'; }
-      if (dcs) { dcs.style.color = '#67e8f9'; dcs.textContent = 'Connected (broker.emqx.io)'; }
+      if (cst) { cst.className = 'badge b-cyan'; cst.innerHTML = '&#9729; Cloud: Online (HiveMQ)'; }
+      if (dcs) { dcs.style.color = '#67e8f9'; dcs.textContent = 'Online (' + (d.mqtt.broker || 'broker.hivemq.com') + ')'; }
     } else {
       if (cst) { cst.className = 'badge'; cst.innerHTML = '&#9729; Cloud: Offline'; }
-      if (dcs) { dcs.style.color = '#f87171'; dcs.textContent = (d.wifi && d.wifi.sta_ok) ? 'Connecting to broker...' : 'Offline (Needs Home WiFi)'; }
+      if (dcs) { dcs.style.color = '#f87171'; dcs.textContent = (d.wifi && d.wifi.sta_ok) ? 'Connecting to HiveMQ...' : 'Offline (Needs Home WiFi)'; }
     }
+
+    // Cycle & Repeat indicators
+    var cycTag = document.getElementById('cyc-tag');
+    if (cycTag) {
+      if (d.a && !d.m) {
+        cycTag.style.display = 'inline-flex';
+        if (d.cyc_mode === 0) {
+          cycTag.innerHTML = '&#8635; Cycle ' + (d.cur_rep || 1) + '/' + (d.reps || 3);
+        } else {
+          cycTag.innerHTML = '&#9201; ' + (d.cd || 0) + 's';
+        }
+      } else {
+        cycTag.style.display = 'none';
+      }
+    }
+
+    // Highlight active preset repeat button
+    [1, 2, 3, 4, 5, 8, 10].forEach(function(n) {
+      var btn = document.getElementById('rep-' + n);
+      if (btn) {
+        btn.className = (d.reps === n && d.cyc_mode === 0) ? 'btn btn-purple active' : 'btn btn-dark';
+      }
+    });
+
+    var bMode = document.getElementById('btn-cycmode');
+    if (bMode) {
+      bMode.textContent = (d.cyc_mode === 0) ? ('Mode: ' + (d.reps || 3) + ' Cycles/FX') : ('Mode: ' + d.c + 's Timed');
+    }
+
+    var grpReps = document.getElementById('group-reps');
+    var grpCyc = document.getElementById('group-cyc');
+    if (grpReps && grpCyc) {
+      if (d.cyc_mode === 0) {
+        grpReps.style.display = 'flex';
+        grpCyc.style.display = 'none';
+      } else {
+        grpReps.style.display = 'none';
+        grpCyc.style.display = 'flex';
+      }
+    }
+
+    var slReps = document.getElementById('sl-reps');
+    if (slReps && document.activeElement !== slReps) slReps.value = d.reps || 3;
+    var valReps = document.getElementById('val-reps');
+    if (valReps) valReps.textContent = (d.reps || 3) + 'x';
 
     // Effect highlight
     FX_NAMES.forEach(function(_, idx) {

@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { DeviceState, ConnectionMode } from "../types";
-import { Wifi, Cpu, Thermometer, Settings, Cloud, Server, Zap } from "lucide-react";
+import { Wifi, Cpu, Thermometer, Settings, Cloud, Server, Zap, Copy, Check } from "lucide-react";
 
 interface HeaderProps {
   state: DeviceState;
@@ -20,6 +20,15 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
 }) => {
   const isWarm = state.temp > 50;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(deviceId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <header className="relative bg-gradient-to-r from-[#12072b] via-[#090b1c] to-[#04152d] border-b border-purple-900/30 px-4 py-4 md:px-8 shadow-2xl">
@@ -33,12 +42,19 @@ export const Header: React.FC<HeaderProps> = ({
             <h1 className="text-xl md:text-2xl font-black bg-gradient-to-r from-purple-400 via-cyan-400 to-pink-400 bg-clip-text text-transparent tracking-wide">
               ESP32 × 16-CH RELAY PRO
             </h1>
-            <p className="text-xs text-slate-400 flex items-center gap-2 font-medium">
-              <span>Cloud IoT Controller</span>
+            <p className="text-xs text-slate-400 flex flex-wrap items-center gap-2 font-medium">
+              <span>HiveMQ Cloud IoT</span>
               <span className="w-1 h-1 rounded-full bg-slate-600"></span>
               <span className="text-cyan-400">Zero Port Forwarding</span>
               <span className="w-1 h-1 rounded-full bg-slate-600"></span>
-              <span className="font-mono text-purple-300">{deviceId}</span>
+              <button
+                onClick={handleCopy}
+                className="font-mono text-purple-300 hover:text-white flex items-center gap-1 bg-purple-950/40 px-1.5 py-0.5 rounded border border-purple-800/40 hover:border-purple-600 transition-all"
+                title="Click to copy Device ID"
+              >
+                <span>{deviceId}</span>
+                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+              </button>
             </p>
           </div>
         </div>

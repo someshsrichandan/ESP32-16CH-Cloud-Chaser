@@ -14,7 +14,10 @@ Engineered for **UCTRONICS 16-Channel 12V Relay Boards**, **Logic Level Shifters
 
 ## 🌟 Highlights
 
-* 🌐 **Worldwide Cloud Control (Zero Port Forwarding):** Outbound MQTT TLS/WebSockets tunnel connects your phone on 4G/5G directly to your home ESP32 without opening router ports or exposing IP addresses.
+* 🌐 **Worldwide Cloud Control (Zero Port Forwarding):** Outbound HiveMQ MQTT TLS/WebSockets tunnel connects your phone on 4G/5G directly to your home ESP32 without opening router ports or exposing IP addresses.
+* 🔁 **Cycle Repeats Mode (Zero Delay / Zero Stutter):** Configurable repeat cycles (1x, 2x, 3x, 4x, 5x, 10x) per effect. The ESP32 runs each effect for N complete cycles, then transitions to the next effect with zero pause!
+* ⚡ **Dual-Core FreeRTOS Isolation:** Core 1 is 100% dedicated to microsecond-precise relay switching. Core 0 handles all WiFi, HTTP, and MQTT in the background, guaranteeing zero jitter or stutter even during network drops.
+* 🔋 **Instant Auto-Startup on Power Loss:** On power cut and restoration, the ESP32 latches relays safely, restores saved settings from NVS flash, and immediately begins running the chaser in under 0.2 seconds!
 * 🎨 **Dynamic FX Studio (No Re-Flashing Needed):** Design, preview, and push unlimited custom step sequences live from your web browser directly into the ESP32's non-volatile flash memory!
 * ⚡ **3-Stage Hardware Isolation:** `ESP32 (3.3V)` ➔ `Logic Level Shifter (3.3V ➔ 5V)` ➔ `16-CH Optocoupler Relay Board (12V Coil)`. Eliminates relay chattering, weak drive currents, and inductive noise.
 * ❄️ **Anti-Overheating & Cool-Run Core:** Dynamic CPU clock scaling to 160MHz, WiFi modem sleep, and FreeRTOS idle task sleep (`waiti 0`) keeping the chip cool (~38°C to 42°C).
@@ -28,7 +31,7 @@ Engineered for **UCTRONICS 16-Channel 12V Relay Boards**, **Logic Level Shifters
 ## ❓ Does My ESP32 Need to Connect to WiFi?
 
 **YES!** For full worldwide remote control:
-* **WiFi Connected (Home Router / Mobile Hotspot):** The ESP32 connects outbound to the secure Cloud MQTT broker (`broker.emqx.io`). This allows you to control all 16 relays from **anywhere in the world** using the Next.js web panel on your phone or laptop.
+* **WiFi Connected (Home Router / Mobile Hotspot):** The ESP32 connects outbound to the secure Cloud MQTT broker (`broker.hivemq.com`). This allows you to control all 16 relays from **anywhere in the world** using the Next.js web panel on your phone or laptop.
 * **Offline Fallback (Access Point Mode):** Even if your home WiFi router is turned off, the ESP32 broadcasts its own fail-safe hotspot:
   * **SSID:** `ESP32_Relay_Chaser`
   * **Password:** `12345678`
@@ -149,7 +152,7 @@ Using two 8-channel bi-directional level shifters (e.g. TXS0108E):
    [1] 16 GPIOs Latched OFF.
    [WiFi] AP: ESP32_Relay_Chaser (IP: 192.168.4.1)
    [Device] Device ID: relay16_xxxxxx
-   [MQTT] Connecting to broker.emqx.io:1883...
+   [MQTT] Connecting to broker.hivemq.com:1883...
    =======================================================
    ```
 7. Note down your unique **Device ID** (e.g. `relay16_e465b8`).

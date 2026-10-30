@@ -27,8 +27,8 @@ const char* MDNS_NAME           = "relay16";
 const char* DEFAULT_HOME_WIFI_SSID = "";
 const char* DEFAULT_HOME_WIFI_PASS = "";
 
-// Free Public Cloud MQTT Broker (Outbound connection = NO PORT FORWARDING)
-const char* MQTT_BROKER_DEFAULT = "broker.emqx.io";
+// High-Speed Reliable Cloud MQTT Broker (Outbound connection = NO PORT FORWARDING)
+const char* MQTT_BROKER_DEFAULT = "broker.hivemq.com";
 const int   MQTT_PORT_DEFAULT   = 1883;
 
 // ── 16 GPIO Pin Assignments (Boot-safe, active-LOW) ─────────
@@ -64,10 +64,17 @@ bool relayState[NUM_RELAYS];
 int  currentEffect   = 0;
 int  effectSpeed     = 120;     // Clamped 40ms to 1000ms
 bool effectRunning   = true;
-bool autoMode        = false;
+bool autoMode        = true;    // Auto-startup default ON!
 bool autoShuffle     = false;
 bool manualMode      = false;
-int  autoCycleTime   = 8000;    // ms
+int  autoCycleTime   = 8000;    // ms (Timed mode fallback)
+
+// Cycle repeat management (Repeats each effect N times before auto-advance)
+int  autoCycleRepeats = 3;      // Target full cycles per effect (1..50, default 3)
+int  completedCycles  = 0;      // Cycles finished for active effect
+int  currentCycleStep = 0;      // Step within current cycle
+int  autoCycleMode    = 0;      // 0 = Repeat Count Mode (e.g. 3 cycles), 1 = Timed Seconds Mode
+volatile bool flagStatePublish = false; // Non-blocking asynchronous broadcast flag
 
 unsigned long autoTimer     = 0;
 unsigned long effectTimer   = 0;
@@ -125,6 +132,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length);
 void publishStateMQTT();
 void runEffectStep();
 void handleAutoMode();
+void advanceAutoEffect();
+int  getEffectCycleLength(int eff);
+void networkTask(void* pvParameters);
 float getChipTemp();
 String buildStateJSON();
 void addCORSHeaders();
@@ -230,21 +240,86 @@ void exitManual() {
   allOff();
 }
 
+int getEffectCycleLength(int eff) {
+  switch (eff) {
+    case 0:  return 16;  // Left Chaser: 16 steps
+    case 1:  return 16;  // Right Chaser: 16 steps
+    case 2:  return 30;  // Ping Pong: 30 steps
+    case 3:  return 8;   // Center Out: 8 steps
+    case 4:  return 8;   // Edges In: 8 steps
+    case 5:  return 16;  // Zip + Unzip: 16 steps
+    case 6:  return 16;  // Dual Snake: 16 steps
+    case 7:  return 32;  // Binary Counter: 32 steps
+    case 8:  return 16;  // Sparkle / Stardust: 16 steps
+    case 9:  return 16;  // Twinkle Sky: 16 steps
+    case 10: return 32;  // Wave Fill: 32 steps
+    case 11: return 16;  // Heartbeat Pulse: 16 steps
+    case 12: return 30;  // Cylon Scanner: 30 steps
+    case 13: return 16;  // Alternating Odd/Ev: 16 steps
+    case 14: return 32;  // Falling Dominos: 32 steps
+    case 15: return 18;  // Theater Marquee: 18 steps
+    case 16: return 14;  // Raindrop Ripple: 14 steps
+    case 17: return 18;  // Fireworks Burst: 18 steps
+    case 18: return 30;  // Knight Rider: 30 steps
+    case 19: return 16;  // Meteor Shower: 16 steps
+    case 20: return 30;  // Double Bounce: 30 steps
+    case 21: return 16;  // Cross Over: 16 steps
+    case 22: return 16;  // Strobe Burst: 16 steps
+    case 23: return 64;  // Stack Build: 64 steps
+    case 24: return 64;  // Reverse Stack: 64 steps
+    case 25: return 16;  // Quad Runner: 16 steps
+    case 26: return 16;  // In-Out Breathe: 16 steps
+    case 27: return 16;  // Segment Stride: 16 steps
+    case 28: return 16;  // Police Strobe: 16 steps
+    case 29: return 16;  // Curtain Reveal: 16 steps
+    case 30: return 16;  // Cyber Glitch: 16 steps
+    case 31: return 26;  // Ripple Reflect: 26 steps
+    case 32: return 16;  // Marching Pairs: 16 steps
+    case 33: return 16;  // Converge & Cross: 16 steps
+    case 34: return 16;  // 4-Phase Wave: 16 steps
+    case 35: return 16;  // Harbor Radar: 16 steps
+    case 36: return 32;  // Fill & Drain: 32 steps
+    case 37: return 20;  // Random Walk: 20 steps
+    case 38: return 16;  // DNA Helix: 16 steps
+    case 39: return 16;  // All Breather: 16 steps
+    case EFFECT_CUSTOM: return (customPatternCount > 0 ? customPatternCount : 16);
+    default: return 16;
+  }
+}
+
 void changeEffect(int newEff) {
   if (newEff < 0 || newEff >= TOTAL_EFFECTS) return;
-  currentEffect = newEff;
-  effectStep    = 0;
-  effectDir     = 1;
-  effSub        = 0;
-  effA          = 0;
-  effB          = NUM_RELAYS - 1;
-  effDirA       = 1;
-  effDirB       = -1;
-  effTop        = NUM_RELAYS - 1;
-  rippleCenter  = random(2, NUM_RELAYS - 2);
-  effectRunning = true;
-  manualMode    = false;
+  currentEffect    = newEff;
+  effectStep       = 0;
+  currentCycleStep = 0;
+  completedCycles  = 0;
+  effectDir        = 1;
+  effSub           = 0;
+  effA             = 0;
+  effB             = NUM_RELAYS - 1;
+  effDirA          = 1;
+  effDirB          = -1;
+  effTop           = NUM_RELAYS - 1;
+  rippleCenter     = random(2, NUM_RELAYS - 2);
+  effectRunning    = true;
+  manualMode       = false;
   allOff();
+}
+
+void advanceAutoEffect() {
+  completedCycles  = 0;
+  currentCycleStep = 0;
+  autoTimer        = millis();
+  int nextEff;
+  if (autoShuffle) {
+    do {
+      nextEff = random(TOTAL_BUILTIN_FX);
+    } while (nextEff == currentEffect);
+  } else {
+    nextEff = (currentEffect + 1) % TOTAL_BUILTIN_FX;
+  }
+  changeEffect(nextEff);
+  flagStatePublish = true;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -320,6 +395,10 @@ void initWiFi() {
   sta_ssid    = prefs.getString("ssid", "");
   sta_pass    = prefs.getString("pass", "");
   mqtt_broker = prefs.getString("broker", MQTT_BROKER_DEFAULT);
+  if (mqtt_broker == "broker.emqx.io" || mqtt_broker.length() == 0) {
+    mqtt_broker = MQTT_BROKER_DEFAULT;
+    prefs.putString("broker", mqtt_broker);
+  }
   mqtt_port   = prefs.getInt("port", MQTT_PORT_DEFAULT);
   prefs.end();
 
@@ -620,11 +699,11 @@ void runEffectStep() {
     case 16: if (effSub == 0) { allOff(); rippleCenter = random(2, NUM_RELAYS - 2); setRelay(rippleCenter, true); effSub = 1; }
              else if (effSub <= 6) { allOff(); int l = rippleCenter - effSub; int r = rippleCenter + effSub;
                if (l >= 0) setRelay(l, true); if (r < NUM_RELAYS) setRelay(r, true); effSub++; }
-             else { allOff(); effSub = 0; } break;
+             else { allOff(); rippleCenter = random(2, NUM_RELAYS - 2); setRelay(rippleCenter, true); effSub = 1; } break;
     case 17: if (effSub == 0) { allOff(); rippleCenter = random(4, 12); effA = 0; effSub = 1; }
              else if (effSub == 1) { allOff(); setRelay(effA, true); effA++; if (effA >= rippleCenter) effSub = 2; }
              else if (effSub == 2) { allOff(); for (int w = -2; w <= 2; w++) { int p = rippleCenter + w; if (p >= 0 && p < NUM_RELAYS) setRelay(p, true); } effSub = 3; }
-             else { allOff(); effSub = 0; } break;
+             else { allOff(); rippleCenter = random(4, 12); effA = 0; setRelay(effA, true); effSub = 1; } break;
     case 18: allOff(); for (int w = -2; w <= 2; w++) { int p = effectStep + w; if (p >= 0 && p < NUM_RELAYS) setRelay(p, true); }
              effectStep += effectDir; if (effectStep >= NUM_RELAYS - 1) effectDir = -1; if (effectStep <= 0) effectDir = 1; break;
     case 19: for (int i=0; i<NUM_RELAYS; i++) { if (relayState[i] && random(3) == 0) setRelay(i, false); }
@@ -677,22 +756,28 @@ void runEffectStep() {
       break;
     }
   }
+
+  // Auto Cycle repeat counting & instant advance (ZERO DELAY / ZERO LAG!)
+  currentCycleStep++;
+  int cycleLen = getEffectCycleLength(currentEffect);
+  if (currentCycleStep >= cycleLen) {
+    currentCycleStep = 0;
+    completedCycles++;
+    if (autoMode && !manualMode && autoCycleMode == 0) {
+      if (completedCycles >= autoCycleRepeats) {
+        advanceAutoEffect();
+      }
+    }
+  }
 }
 
 void handleAutoMode() {
   if (!autoMode || manualMode) return;
-  if ((millis() - autoTimer) >= (unsigned long)autoCycleTime) {
-    autoTimer = millis();
-    int nextEff;
-    if (autoShuffle) {
-      do {
-        nextEff = random(TOTAL_BUILTIN_FX);
-      } while (nextEff == currentEffect);
-    } else {
-      nextEff = (currentEffect + 1) % TOTAL_BUILTIN_FX;
+  // Fallback timed mode if user explicitly switched to seconds
+  if (autoCycleMode == 1) {
+    if ((millis() - autoTimer) >= (unsigned long)autoCycleTime) {
+      advanceAutoEffect();
     }
-    changeEffect(nextEff);
-    publishStateMQTT();
   }
 }
 
@@ -729,6 +814,9 @@ String buildStateJSON() {
   j += "\"m\":" + String(manualMode ? 1 : 0) + ",";
   j += "\"c\":" + String(autoCycleTime / 1000) + ",";
   j += "\"cd\":" + String(cd) + ",";
+  j += "\"reps\":" + String(autoCycleRepeats) + ",";
+  j += "\"cur_rep\":" + String(completedCycles + 1) + ",";
+  j += "\"cyc_mode\":" + String(autoCycleMode) + ",";
   j += "\"temp\":" + String(getChipTemp(), 1) + ",";
   j += "\"heap\":" + String(ESP.getFreeHeap()) + ",";
   j += "\"uptime\":" + String(now / 1000) + ",";
@@ -802,15 +890,54 @@ void setupWebServer() {
   });
 
   server.on("/api/speed", HTTP_GET, []() {
-    if (server.hasArg("v")) effectSpeed = constrain(server.arg("v").toInt(), 40, 1000);
+    if (server.hasArg("v")) {
+      effectSpeed = constrain(server.arg("v").toInt(), 40, 1000);
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("spd", effectSpeed);
+      prefs.end();
+    }
     sendState();
-    publishStateMQTT();
+    flagStatePublish = true;
   });
 
   server.on("/api/cycle", HTTP_GET, []() {
-    if (server.hasArg("v")) autoCycleTime = constrain(server.arg("v").toInt(), 3000, 60000);
+    if (server.hasArg("v")) {
+      autoCycleTime = constrain(server.arg("v").toInt(), 3000, 60000);
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("cycle_t", autoCycleTime);
+      prefs.end();
+    }
     addCORSHeaders();
     server.send(200, "text/plain", "OK");
+  });
+
+  server.on("/api/repeats", HTTP_GET, []() {
+    if (server.hasArg("v")) {
+      autoCycleRepeats = constrain(server.arg("v").toInt(), 1, 50);
+      autoCycleMode = 0; // Switch to cycle repeats mode
+      completedCycles = 0;
+      currentCycleStep = 0;
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("repeats", autoCycleRepeats);
+      prefs.putInt("cyc_mode", autoCycleMode);
+      prefs.end();
+    }
+    sendState();
+    flagStatePublish = true;
+  });
+
+  server.on("/api/cycmode", HTTP_GET, []() {
+    if (server.hasArg("v")) {
+      autoCycleMode = server.arg("v").toInt() == 1 ? 1 : 0;
+      completedCycles = 0;
+      currentCycleStep = 0;
+      autoTimer = millis();
+      prefs.begin("relay_cfg", false);
+      prefs.putInt("cyc_mode", autoCycleMode);
+      prefs.end();
+    }
+    sendState();
+    flagStatePublish = true;
   });
 
   server.on("/api/cmd", HTTP_GET, []() {
@@ -818,16 +945,27 @@ void setupWebServer() {
     if (a == "all_on") { enterManual(); allOn(); }
     else if (a == "all_off") { enterManual(); allOff(); }
     else if (a == "toggle_run") { if (manualMode) exitManual(); else effectRunning = !effectRunning; }
-    else if (a == "toggle_auto") { autoMode = !autoMode; if (autoMode) { manualMode = false; effectRunning = true; autoTimer = millis(); } }
-    else if (a == "toggle_shuffle") { autoShuffle = !autoShuffle; }
+    else if (a == "toggle_auto") {
+      autoMode = !autoMode;
+      if (autoMode) { manualMode = false; effectRunning = true; autoTimer = millis(); completedCycles = 0; currentCycleStep = 0; }
+      prefs.begin("relay_cfg", false);
+      prefs.putBool("auto_mode", autoMode);
+      prefs.end();
+    }
+    else if (a == "toggle_shuffle") {
+      autoShuffle = !autoShuffle;
+      prefs.begin("relay_cfg", false);
+      prefs.putBool("auto_shuf", autoShuffle);
+      prefs.end();
+    }
     else if (a == "toggle_manual") { if (manualMode) exitManual(); else enterManual(); }
-    else if (a == "next") { changeEffect((currentEffect + 1) % TOTAL_EFFECTS); }
+    else if (a == "next") { advanceAutoEffect(); }
     else if (a == "prev") { changeEffect((currentEffect - 1 + TOTAL_EFFECTS) % TOTAL_EFFECTS); }
     else if (a == "odd") { enterManual(); for (int i=0; i<NUM_RELAYS; i++) setRelay(i, i%2==0); }
     else if (a == "even") { enterManual(); for (int i=0; i<NUM_RELAYS; i++) setRelay(i, i%2==1); }
     else if (a == "invert") { enterManual(); for (int i=0; i<NUM_RELAYS; i++) setRelay(i, !relayState[i]); }
     sendState();
-    publishStateMQTT();
+    flagStatePublish = true;
   });
 
   // Dynamic Pattern Upload over HTTP
@@ -968,6 +1106,24 @@ void setupWebServer() {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  DEDICATED ASYNC NETWORK TASK (Core 0)
+//  Handles WiFi, HTTP Server, and Cloud MQTT in background
+//  Guarantees Core 1 relay animations have ZERO latency / ZERO jitter!
+// ══════════════════════════════════════════════════════════════
+void networkTask(void* pvParameters) {
+  for (;;) {
+    server.handleClient();
+    checkWiFi();
+    checkMQTT();
+    if (flagStatePublish) {
+      flagStatePublish = false;
+      publishStateMQTT();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 //  SETUP INITIALIZATION
 // ══════════════════════════════════════════════════════════════
 void setup() {
@@ -981,29 +1137,48 @@ void setup() {
   Serial.println(" Zero Port Forwarding • Dynamic Effects • Low-Heat Core");
   Serial.println("=======================================================");
 
-  // 2. Safe GPIO Init
+  // 2. Safe GPIO Init - 16 Relays Latched OFF instantly
   initRelayPins();
   Serial.println("[1] 16 GPIOs Latched OFF.");
 
   // 3. Restore Dynamic Custom Pattern from NVS
   restoreCustomPatternFromNVS();
 
-  // 4. Start Dual WiFi
+  // 4. Auto-Startup Restore from NVS (Runs immediately on power-on / power restore)
+  prefs.begin("relay_cfg", true);
+  autoMode         = prefs.getBool("auto_mode", true); // Default TRUE for auto startup!
+  autoShuffle      = prefs.getBool("auto_shuf", false);
+  currentEffect    = prefs.getInt("eff", 0);
+  effectSpeed      = prefs.getInt("spd", 120);
+  autoCycleRepeats = prefs.getInt("repeats", 3);       // Default 3 repeats per effect!
+  autoCycleMode    = prefs.getInt("cyc_mode", 0);      // Default 0 = Repeat Count Mode!
+  autoCycleTime    = prefs.getInt("cycle_t", 8000);
+  prefs.end();
+
+  completedCycles  = 0;
+  currentCycleStep = 0;
+  manualMode       = false;
+  effectRunning    = true;
+
+  // 5. Start Dual WiFi
   initWiFi();
 
-  // 5. Start Web Server & OTA
+  // 6. Start Web Server & OTA
   setupWebServer();
 
-  // 6. Start Outbound Cloud MQTT (No port forwarding needed!)
+  // 7. Start Outbound Cloud MQTT (broker.hivemq.com)
   initMQTT();
 
-  // 7. Hardware Watchdog on Core 0
+  // 8. Hardware Watchdog on Core 0
   wdTimer = millis();
   xTaskCreatePinnedToCore(wdTask, "WDT", 2048, NULL, 1, NULL, 0);
 
-  // 8. Test pulse on Relay 1 (80ms click)
+  // 9. Start Background Networking on Core 0
+  xTaskCreatePinnedToCore(networkTask, "NET", 4096, NULL, 1, NULL, 0);
+
+  // 10. Test pulse on Relay 1 (40ms click)
   setRelay(0, true);
-  delay(80);
+  delay(40);
   setRelay(0, false);
 
   effectTimer    = millis();
@@ -1014,33 +1189,25 @@ void setup() {
 
   Serial.println("=======================================================");
   Serial.printf(" READY! Device ID: %s\n", device_id.c_str());
-  Serial.println(" MQTT Broker: broker.emqx.io:1883 (No Port Forwarding)");
+  Serial.printf(" MQTT Cloud Broker: %s:%d (HiveMQ Public)\n", mqtt_broker.c_str(), mqtt_port);
   Serial.println(" Local mDNS : http://relay16.local");
   Serial.println(" Local AP   : http://192.168.4.1 (ESP32_Relay_Chaser)");
+  Serial.printf(" Auto Startup: ACTIVE (%d cycles/effect)\n", autoCycleRepeats);
   Serial.println("=======================================================\n");
 }
 
 // ══════════════════════════════════════════════════════════════
-//  MAIN EXECUTION LOOP
+//  MAIN EXECUTION LOOP (Core 1 - 100% Dedicated to Relays)
 // ══════════════════════════════════════════════════════════════
 void loop() {
   wdTimer = millis();
 
-  // Handle local HTTP clients
-  server.handleClient();
-
-  // Handle Cloud MQTT
-  checkMQTT();
-
-  // Handle Continuous Auto Cycle
-  handleAutoMode();
-
-  // Handle Relay Animation Step
+  // Handle Relay Animation Step (Zero jitter, zero networking lag!)
   runEffectStep();
 
-  // Monitor Network
-  checkWiFi();
+  // Handle Timed Auto Cycle fallback
+  handleAutoMode();
 
-  // ── Thermal Optimization: FreeRTOS idle waiti instruction ──
+  // FreeRTOS idle wait
   delay(1);
 }

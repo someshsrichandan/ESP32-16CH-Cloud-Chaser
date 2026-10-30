@@ -22,6 +22,8 @@ export default function Home() {
     setEffect,
     setSpeed,
     setCycle,
+    setRepeats,
+    setCycMode,
     triggerAction,
     uploadCustomPattern,
     streamFrame,
@@ -119,6 +121,8 @@ export default function Home() {
               onTriggerAction={triggerAction}
               onSetSpeed={setSpeed}
               onSetCycle={setCycle}
+              onSetRepeats={setRepeats}
+              onSetCycMode={setCycMode}
             />
 
             {/* 40 Effects Selector */}
@@ -190,7 +194,7 @@ export default function Home() {
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800">
                   <span className="text-slate-400">Cloud Broker:</span>
-                  <span className="font-mono text-purple-300">{state.mqtt?.broker || "broker.emqx.io"}</span>
+                  <span className="font-mono text-purple-300">{state.mqtt?.broker || "broker.hivemq.com"}</span>
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-slate-400">Port Forwarding:</span>

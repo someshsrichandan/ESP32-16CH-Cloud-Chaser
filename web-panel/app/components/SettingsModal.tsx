@@ -121,11 +121,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="text"
                 value={broker}
                 onChange={(e) => setBroker(e.target.value)}
-                placeholder="wss://broker.emqx.io:8084/mqtt"
+                placeholder="wss://broker.hivemq.com:8884/mqtt"
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
               />
               <span className="text-[10px] text-slate-500 mt-1 block">
-                Default: <code>wss://broker.emqx.io:8084/mqtt</code> (free public secure broker).
+                Default: <code>wss://broker.hivemq.com:8884/mqtt</code> (HiveMQ enterprise public cloud broker).
               </span>
             </div>
 

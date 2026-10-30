@@ -26,6 +26,9 @@ const DEFAULT_STATE: DeviceState = {
   m: 0,
   c: 8,
   cd: 0,
+  reps: 3,
+  cur_rep: 1,
+  cyc_mode: 0,
   temp: 42,
   heap: 250000,
   uptime: 0,
@@ -40,7 +43,7 @@ const DEFAULT_STATE: DeviceState = {
   },
   mqtt: {
     connected: 0,
-    broker: "broker.emqx.io",
+    broker: "broker.hivemq.com",
     port: 1883,
   },
   custom_pat: {
@@ -53,7 +56,7 @@ export function useRelayController() {
   const [state, setState] = useState<DeviceState>(DEFAULT_STATE);
   const [connectionMode, setConnectionMode] = useState<ConnectionMode>("cloud");
   const [deviceId, setDeviceId] = useState<string>("relay16_default");
-  const [brokerWsUrl, setBrokerWsUrl] = useState<string>("wss://broker.emqx.io:8084/mqtt");
+  const [brokerWsUrl, setBrokerWsUrl] = useState<string>("wss://broker.hivemq.com:8884/mqtt");
   const [localIp, setLocalIp] = useState<string>("relay16.local");
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [lastRxTime, setLastRxTime] = useState<number>(0);
@@ -73,7 +76,12 @@ export function useRelayController() {
       if (savedIp) setLocalIp(savedIp);
 
       const savedBroker = localStorage.getItem("relay_broker_ws");
-      if (savedBroker) setBrokerWsUrl(savedBroker);
+      if (savedBroker && !savedBroker.includes("emqx.io")) {
+        setBrokerWsUrl(savedBroker);
+      } else {
+        setBrokerWsUrl("wss://broker.hivemq.com:8884/mqtt");
+        localStorage.setItem("relay_broker_ws", "wss://broker.hivemq.com:8884/mqtt");
+      }
     } catch {
       // Ignore in SSR
     }
@@ -241,6 +249,30 @@ export function useRelayController() {
     [sendCommand]
   );
 
+  const setRepeats = useCallback(
+    (repeats: number) => {
+      setState((prev) => ({ ...prev, reps: repeats, cyc_mode: 0 }));
+      if (connectionMode === "cloud") {
+        sendCommand({ cmd: "repeats", v: repeats });
+      } else {
+        fetch(`http://${localIp}/api/repeats?v=${repeats}`).catch(() => {});
+      }
+    },
+    [connectionMode, sendCommand, localIp]
+  );
+
+  const setCycMode = useCallback(
+    (mode: number) => {
+      setState((prev) => ({ ...prev, cyc_mode: mode }));
+      if (connectionMode === "cloud") {
+        sendCommand({ cmd: "cyc_mode", v: mode });
+      } else {
+        fetch(`http://${localIp}/api/cycmode?v=${mode}`).catch(() => {});
+      }
+    },
+    [connectionMode, sendCommand, localIp]
+  );
+
   const triggerAction = useCallback(
     (action: string) => {
       if (action === "all_on") {
@@ -329,6 +361,8 @@ export function useRelayController() {
     setEffect,
     setSpeed,
     setCycle,
+    setRepeats,
+    setCycMode,
     triggerAction,
     uploadCustomPattern,
     streamFrame,
