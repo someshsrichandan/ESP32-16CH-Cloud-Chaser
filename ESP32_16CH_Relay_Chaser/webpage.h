@@ -112,6 +112,9 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
   <div class="card">
     <div class="status-bar">
       <span class="badge"><span class="dot" id="dot"></span><span id="conn-text">Connecting...</span></span>
+      <span class="badge b-purple" id="dev-tag">&#127380; ID: relay16_...</span>
+      <span class="badge" id="wifi-status-tag">&#128246; WiFi: Checking...</span>
+      <span class="badge" id="cloud-status-tag">&#9729; Cloud: Offline</span>
       <span class="badge b-purple" id="fx-name">Left Chaser</span>
       <span class="badge b-cyan" id="speed-tag">120ms</span>
       <span class="badge b-green" id="mode-tag">FX Mode</span>
@@ -179,8 +182,26 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
       <span>&#128246; WiFi Router &amp; Internet Setup</span>
       <button class="btn btn-dark" style="padding:4px 8px; font-size:0.7rem;" onclick="toggleGuide()">&#128214; Internet Setup Guide</button>
     </div>
+
+    <!-- Live Diagnostics & Device ID Card -->
+    <div style="background:#090d1f; border:1px solid #1f274a; border-radius:10px; padding:12px; margin-bottom:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+          <span style="font-size:0.7rem; color:#94a3b8; font-weight:700; text-transform:uppercase;">Hardware Device ID (Zero Port Forwarding):</span>
+          <div style="font-size:1.1rem; font-weight:900; font-family:monospace; color:#38bdf8; letter-spacing:0.05em;" id="disp-dev-id">relay16_...</div>
+        </div>
+        <button class="btn btn-purple" style="padding:6px 12px; font-size:0.75rem;" onclick="copyDevId()">&#128203; Copy Device ID</button>
+      </div>
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid #171d38; display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; font-size:0.74rem;">
+        <div><span style="color:#94a3b8;">Router WiFi:</span><br><b id="disp-wifi-sta" style="color:#fcd34d;">Scanning...</b></div>
+        <div><span style="color:#94a3b8;">Local Station IP:</span><br><b id="disp-wifi-ip" style="color:#6ee7b7; font-family:monospace;">Not Connected</b></div>
+        <div><span style="color:#94a3b8;">Cloud MQTT:</span><br><b id="disp-cloud-st" style="color:#f87171;">Offline</b></div>
+        <div><span style="color:#94a3b8;">Web Panel Link:</span><br><b style="color:#c084fc;">Next.js Cloud Ready</b></div>
+      </div>
+    </div>
+
     <p style="font-size:0.75rem; color:#94a3b8; margin-bottom:10px;">
-      Connect this ESP32 directly to your home WiFi router so any phone, computer, or tablet on your network can access it at <b style="color:#38bdf8">http://relay16.local</b> or over the Internet!
+      Save your home WiFi details below. The ESP32 will <b>permanently save</b> them in NVS flash and <b>automatically auto-connect &amp; reconnect</b> every time it powers on!
     </p>
 
     <div class="form-row">
@@ -348,6 +369,17 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
       });
   };
 
+  var copyDevId = function() {
+    var idText = (state && state.device_id) ? state.device_id : document.getElementById('disp-dev-id').textContent;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(idText).then(function() {
+        alert('Device ID "' + idText + '" copied to clipboard!\nPaste it into your Next.js Web Panel Settings to connect worldwide.');
+      });
+    } else {
+      prompt('Copy your Device ID:', idText);
+    }
+  };
+
   var renderState = function(d) {
     state = d;
     fails = 0;
@@ -356,6 +388,43 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
     // Connection badge
     document.getElementById('dot').className = 'dot ok';
     document.getElementById('conn-text').textContent = 'Connected';
+
+    // Device ID & Copy Card
+    if (d.device_id) {
+      var dt = document.getElementById('dev-tag');
+      if (dt) dt.innerHTML = '&#127380; ' + d.device_id;
+      var ddi = document.getElementById('disp-dev-id');
+      if (ddi) ddi.textContent = d.device_id;
+    }
+
+    // WiFi Station Status
+    var wst = document.getElementById('wifi-status-tag');
+    var dws = document.getElementById('disp-wifi-sta');
+    var dwi = document.getElementById('disp-wifi-ip');
+    if (d.wifi && d.wifi.sta_ok) {
+      if (wst) { wst.className = 'badge b-green'; wst.innerHTML = '&#128246; ' + d.wifi.sta_ssid; }
+      if (dws) { dws.style.color = '#6ee7b7'; dws.textContent = d.wifi.sta_ssid + ' (' + d.wifi.rssi + ' dBm)'; }
+      if (dwi) { dwi.textContent = d.wifi.sta_ip; }
+    } else if (d.wifi && d.wifi.sta_connecting) {
+      if (wst) { wst.className = 'badge b-amber'; wst.innerHTML = '&#128246; Connecting...'; }
+      if (dws) { dws.style.color = '#fcd34d'; dws.textContent = 'Connecting to ' + (d.wifi.sta_ssid || 'WiFi') + '...'; }
+      if (dwi) { dwi.textContent = 'Acquiring IP...'; }
+    } else {
+      if (wst) { wst.className = 'badge'; wst.innerHTML = '&#128246; Hotspot Only'; }
+      if (dws) { dws.style.color = '#94a3b8'; dws.textContent = 'Not connected (AP Only)'; }
+      if (dwi) { dwi.textContent = d.wifi ? d.wifi.ap_ip : '192.168.4.1'; }
+    }
+
+    // Cloud MQTT Status
+    var cst = document.getElementById('cloud-status-tag');
+    var dcs = document.getElementById('disp-cloud-st');
+    if (d.mqtt && d.mqtt.connected) {
+      if (cst) { cst.className = 'badge b-cyan'; cst.innerHTML = '&#9729; Cloud: Online'; }
+      if (dcs) { dcs.style.color = '#67e8f9'; dcs.textContent = 'Connected (broker.emqx.io)'; }
+    } else {
+      if (cst) { cst.className = 'badge'; cst.innerHTML = '&#9729; Cloud: Offline'; }
+      if (dcs) { dcs.style.color = '#f87171'; dcs.textContent = (d.wifi && d.wifi.sta_ok) ? 'Connecting to broker...' : 'Offline (Needs Home WiFi)'; }
+    }
 
     // Effect highlight
     FX_NAMES.forEach(function(_, idx) {

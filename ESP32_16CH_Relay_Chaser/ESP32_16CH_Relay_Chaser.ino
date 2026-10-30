@@ -303,21 +303,19 @@ void restoreCustomPatternFromNVS() {
 // ══════════════════════════════════════════════════════════════
 void initWiFi() {
   Serial.println("[WiFi] Starting Dual Mode (AP + Station)...");
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  delay(100);
 
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.setSleep(true); // Power & thermal saving
-
-  // Generate unique Device ID from MAC (e.g. relay16_a1b2c3)
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
+  // 1. Generate unique hardware Device ID from physical silicon OTP eFuse
+  // Never returns 000000 regardless of radio state!
+  uint64_t chipmac = ESP.getEfuseMac();
   char idBuf[32];
-  snprintf(idBuf, sizeof(idBuf), "relay16_%02x%02x%02x", mac[3], mac[4], mac[5]);
+  snprintf(idBuf, sizeof(idBuf), "relay16_%02X%02X%02X",
+           (uint8_t)(chipmac >> 16),
+           (uint8_t)(chipmac >> 8),
+           (uint8_t)(chipmac));
   device_id = String(idBuf);
+  Serial.printf("[Device] Hardware Device ID: %s\n", device_id.c_str());
 
-  // Read stored WiFi & MQTT credentials
+  // 2. Read stored WiFi & MQTT credentials from NVS flash
   prefs.begin("relay_cfg", false);
   sta_ssid    = prefs.getString("ssid", "");
   sta_pass    = prefs.getString("pass", "");
@@ -331,19 +329,29 @@ void initWiFi() {
     sta_pass = DEFAULT_HOME_WIFI_PASS;
   }
 
-  // Start Access Point
-  WiFi.softAP(AP_SSID_DEFAULT, AP_PASSWORD_DEFAULT, 1, 0, 4);
-  Serial.printf("[WiFi] AP: %s (IP: %s)\n", AP_SSID_DEFAULT, WiFi.softAPIP().toString().c_str());
-  Serial.printf("[Device] Device ID: %s\n", device_id.c_str());
+  // 3. Configure WiFi: persist credentials and auto-reconnect
+  WiFi.persistent(true);
+  WiFi.setAutoReconnect(true);
+  WiFi.mode(WIFI_AP_STA);
 
+  // Disable sleep during initial connection to prevent 802.11 handshake packet drop
+  WiFi.setSleep(false);
+
+  // 4. Start Fallback Access Point (Always available for direct connection & recovery)
+  WiFi.softAP(AP_SSID_DEFAULT, AP_PASSWORD_DEFAULT, 1, 0, 4);
+  Serial.printf("[WiFi] Access Point started: '%s' (IP: %s)\n", AP_SSID_DEFAULT, WiFi.softAPIP().toString().c_str());
+
+  // 5. Connect to Station if router SSID is configured
   if (sta_ssid.length() > 0) {
-    Serial.printf("[WiFi] Connecting to home router: %s\n", sta_ssid.c_str());
+    Serial.printf("[WiFi] Connecting to home router: '%s'...\n", sta_ssid.c_str());
     WiFi.begin(sta_ssid.c_str(), sta_pass.c_str());
     sta_connecting = true;
     sta_connect_start = millis();
+  } else {
+    Serial.println("[WiFi] No saved home router. Connect to AP 'ESP32_Relay_Chaser' (192.168.4.1) to configure.");
   }
 
-  // Start mDNS (http://relay16.local)
+  // 6. Start mDNS (http://relay16.local)
   if (MDNS.begin(MDNS_NAME)) {
     MDNS.addService("http", "tcp", 80);
     Serial.printf("[mDNS] http://%s.local\n", MDNS_NAME);
@@ -351,19 +359,36 @@ void initWiFi() {
 }
 
 void checkWiFi() {
-  if (millis() - wifiTimer < 4000) return;
+  if (millis() - wifiTimer < 3500) return;
   wifiTimer = millis();
 
+  // Case 1: Currently in an active connection attempt
   if (sta_connecting) {
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
       sta_connecting = false;
-      Serial.printf("[WiFi] Connected to router! IP: %s\n", WiFi.localIP().toString().c_str());
-    } else if (millis() - sta_connect_start > 25000) {
-      sta_connecting = false;
-      Serial.println("[WiFi] Connection timeout. Retrying in background...");
+      WiFi.setSleep(true); // Now safe to enable modem sleep for power & thermal optimization
+      Serial.printf("[WiFi] Connected to router! SSID: '%s', IP: %s, RSSI: %d dBm\n",
+                    WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      publishStateMQTT();
+    } else if (millis() - sta_connect_start > 15000) {
+      // 15 seconds passed; re-trigger connection in background without blocking
+      Serial.printf("[WiFi] Still connecting to '%s'... Retrying background connection.\n", sta_ssid.c_str());
+      WiFi.begin(sta_ssid.c_str(), sta_pass.c_str());
+      sta_connect_start = millis();
+    }
+  }
+  // Case 2: Configured with router credentials, but disconnected (e.g. router rebooted or power cycled)
+  else if (sta_ssid.length() > 0) {
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+      Serial.printf("[WiFi] Connection lost. Auto-reconnecting to '%s'...\n", sta_ssid.c_str());
+      WiFi.setSleep(false);
+      WiFi.begin(sta_ssid.c_str(), sta_pass.c_str());
+      sta_connecting = true;
+      sta_connect_start = millis();
     }
   }
 
+  // Guard: ensure softAP is running if somehow stopped
   if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
     WiFi.softAP(AP_SSID_DEFAULT, AP_PASSWORD_DEFAULT, 1, 0, 4);
   }
@@ -380,7 +405,10 @@ void initMQTT() {
 }
 
 void checkMQTT() {
-  if (WiFi.status() != WL_CONNECTED) return;
+  // CRITICAL GUARD: Only attempt cloud connection if WiFi Station has a valid IP!
+  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
+    return;
+  }
   
   if (mqttClient.connected()) {
     mqttClient.loop();
@@ -392,24 +420,24 @@ void checkMQTT() {
     return;
   }
 
-  // Reconnect with non-blocking throttle
-  if (millis() - mqttRetryTimer < 6000) return;
+  // Reconnect with non-blocking throttle (every 5 seconds)
+  if (millis() - mqttRetryTimer < 5000) return;
   mqttRetryTimer = millis();
 
-  String cmdTopic   = device_id + "/cmd";
-  String stateTopic = device_id + "/state";
-  String statusTopic= device_id + "/status";
+  String cmdTopic    = device_id + "/cmd";
+  String stateTopic  = device_id + "/state";
+  String statusTopic = device_id + "/status";
 
   Serial.printf("[MQTT] Connecting to %s:%d as %s...\n", mqtt_broker.c_str(), mqtt_port, device_id.c_str());
   
   // Connect with Last Will & Testament (LWT)
   if (mqttClient.connect(device_id.c_str(), statusTopic.c_str(), 1, true, "offline")) {
-    Serial.println("[MQTT] Connected! Subscribing to command topic...");
+    Serial.printf("[MQTT] Connected to cloud broker! Subscribed to '%s'\n", cmdTopic.c_str());
     mqttClient.publish(statusTopic.c_str(), "online", true);
     mqttClient.subscribe(cmdTopic.c_str());
     publishStateMQTT();
   } else {
-    Serial.printf("[MQTT] Connect failed (rc=%d). Will retry.\n", mqttClient.state());
+    Serial.printf("[MQTT] Connect failed (rc=%d). Retrying in 5s...\n", mqttClient.state());
   }
 }
 
@@ -687,8 +715,8 @@ String buildStateJSON() {
     cd = (remain > 0) ? (remain / 1000) : 0;
   }
 
-  bool staOk = (WiFi.status() == WL_CONNECTED);
-  String staIpStr = staOk ? WiFi.localIP().toString() : "Not Connected";
+  bool staOk = (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0));
+  String staIpStr = staOk ? WiFi.localIP().toString() : (sta_connecting ? "Connecting..." : "Not Connected");
 
   String j = "{";
   j += "\"device_id\":\"" + device_id + "\",";
@@ -707,11 +735,13 @@ String buildStateJSON() {
   j += "\"mqtt\":{";
   j += "\"connected\":" + String(mqttClient.connected() ? 1 : 0) + ",";
   j += "\"broker\":\"" + mqtt_broker + "\",";
-  j += "\"port\":" + String(mqtt_port);
+  j += "\"port\":" + String(mqtt_port) + ",";
+  j += "\"topic\":\"" + device_id + "\"";
   j += "},";
   j += "\"wifi\":{";
   j += "\"sta_ok\":" + String(staOk ? 1 : 0) + ",";
-  j += "\"sta_ssid\":\"" + (staOk ? WiFi.SSID() : (sta_connecting ? "Connecting..." : "None")) + "\",";
+  j += "\"sta_connecting\":" + String(sta_connecting ? 1 : 0) + ",";
+  j += "\"sta_ssid\":\"" + (staOk ? WiFi.SSID() : (sta_ssid.length() > 0 ? sta_ssid : "None")) + "\",";
   j += "\"sta_ip\":\"" + staIpStr + "\",";
   j += "\"rssi\":" + String(staOk ? WiFi.RSSI() : 0) + ",";
   j += "\"ap_ip\":\"" + WiFi.softAPIP().toString() + "\",";
@@ -861,23 +891,34 @@ void setupWebServer() {
     if (server.hasArg("ssid")) {
       String s = server.arg("ssid");
       String p = server.hasArg("pass") ? server.arg("pass") : "";
+      s.trim();
+      p.trim();
       prefs.begin("relay_cfg", false);
       prefs.putString("ssid", s);
       prefs.putString("pass", p);
       prefs.end();
-      sta_ssid = s; sta_pass = p;
+      sta_ssid = s;
+      sta_pass = p;
+      Serial.printf("[WiFi] Saved new credentials to NVS: SSID='%s'\n", sta_ssid.c_str());
+      WiFi.disconnect(false);
+      WiFi.setSleep(false);
       WiFi.begin(sta_ssid.c_str(), sta_pass.c_str());
-      sta_connecting = true; sta_connect_start = millis();
+      sta_connecting = true;
+      sta_connect_start = millis();
     }
     sendState();
   });
 
   server.on("/api/wifi/reset", HTTP_GET, []() {
     prefs.begin("relay_cfg", false);
-    prefs.remove("ssid"); prefs.remove("pass");
+    prefs.remove("ssid");
+    prefs.remove("pass");
     prefs.end();
-    sta_ssid = ""; sta_pass = "";
+    sta_ssid = "";
+    sta_pass = "";
+    sta_connecting = false;
     WiFi.disconnect(false);
+    Serial.println("[WiFi] Saved credentials removed from NVS.");
     sendState();
   });
 
