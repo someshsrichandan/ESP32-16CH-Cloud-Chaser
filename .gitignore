@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+*/node_modules/
+web-panel/node_modules/
+.pnp
+.pnp.js
+
+# Next.js build outputs
+.next/
+*/.next/
+web-panel/.next/
+out/
+build/
+dist/
+
+# Environment variables
+.env
+.env*.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Arduino compilation artifacts
+*.bin
+*.elf
+*.hex
+*.o
+*.d
