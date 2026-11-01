@@ -2,12 +2,18 @@
 #include "config.h"
 #include <esp_system.h>
 #include <esp_mac.h>
+#include <nvs_flash.h>
 #include <string.h>
 
 #define NVS_NAMESPACE "rchaser"
 
 void ConfigManager::begin() {
-    _prefs.begin(NVS_NAMESPACE, false);
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+
     loadConfig();
 
     if (_deviceId[0] == '\0') {

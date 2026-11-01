@@ -20,33 +20,39 @@ bool HttpManager::doPost(const char* path, const char* body, char* responseOut, 
     char url[256];
     snprintf(url, sizeof(url), "%s%s", configManager.getApiBaseUrl(), path);
 
-    HTTPClient http;
     bool isHttps = (strncmp(url, "https://", 8) == 0);
 
     if (isHttps) {
         WiFiClientSecure secClient;
         secClient.setInsecure(); // Skip strict cert chain verification for simplicity
+        HTTPClient http;
         http.begin(secClient, url);
         http.setTimeout(HTTP_TIMEOUT_MS);
         addAuthHeaders(http);
         _lastCode = http.POST(body);
+        _lastOk = (_lastCode == 200 || _lastCode == 201);
+        if (_lastOk && responseOut && responseSize > 0) {
+            String resp = http.getString();
+            strncpy(responseOut, resp.c_str(), responseSize - 1);
+            responseOut[responseSize - 1] = '\0';
+        }
+        http.end();
     } else {
         WiFiClient plainClient;
+        HTTPClient http;
         http.begin(plainClient, url);
         http.setTimeout(HTTP_TIMEOUT_MS);
         addAuthHeaders(http);
         _lastCode = http.POST(body);
+        _lastOk = (_lastCode == 200 || _lastCode == 201);
+        if (_lastOk && responseOut && responseSize > 0) {
+            String resp = http.getString();
+            strncpy(responseOut, resp.c_str(), responseSize - 1);
+            responseOut[responseSize - 1] = '\0';
+        }
+        http.end();
     }
 
-    _lastOk = (_lastCode == 200 || _lastCode == 201);
-
-    if (_lastOk && responseOut && responseSize > 0) {
-        String resp = http.getString();
-        strncpy(responseOut, resp.c_str(), responseSize - 1);
-        responseOut[responseSize - 1] = '\0';
-    }
-
-    http.end();
     return _lastOk;
 }
 
@@ -54,33 +60,39 @@ bool HttpManager::doGet(const char* path, char* responseOut, size_t responseSize
     char url[256];
     snprintf(url, sizeof(url), "%s%s", configManager.getApiBaseUrl(), path);
 
-    HTTPClient http;
     bool isHttps = (strncmp(url, "https://", 8) == 0);
 
     if (isHttps) {
         WiFiClientSecure secClient;
         secClient.setInsecure();
+        HTTPClient http;
         http.begin(secClient, url);
         http.setTimeout(HTTP_TIMEOUT_MS);
         addAuthHeaders(http);
         _lastCode = http.GET();
+        _lastOk = (_lastCode == 200);
+        if (_lastOk && responseOut && responseSize > 0) {
+            String resp = http.getString();
+            strncpy(responseOut, resp.c_str(), responseSize - 1);
+            responseOut[responseSize - 1] = '\0';
+        }
+        http.end();
     } else {
         WiFiClient plainClient;
+        HTTPClient http;
         http.begin(plainClient, url);
         http.setTimeout(HTTP_TIMEOUT_MS);
         addAuthHeaders(http);
         _lastCode = http.GET();
+        _lastOk = (_lastCode == 200);
+        if (_lastOk && responseOut && responseSize > 0) {
+            String resp = http.getString();
+            strncpy(responseOut, resp.c_str(), responseSize - 1);
+            responseOut[responseSize - 1] = '\0';
+        }
+        http.end();
     }
 
-    _lastOk = (_lastCode == 200);
-
-    if (_lastOk && responseOut && responseSize > 0) {
-        String resp = http.getString();
-        strncpy(responseOut, resp.c_str(), responseSize - 1);
-        responseOut[responseSize - 1] = '\0';
-    }
-
-    http.end();
     return _lastOk;
 }
 
