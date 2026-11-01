@@ -30,35 +30,25 @@ void CycleManager::init(EffectEngine* engine, SpeedController* speedController) 
 }
 
 void CycleManager::update() {
-    if (_cycleCompletePending) {
-        _cycleCompletePending = false;
-        _completedCyclesForCurrent++;
-
-        if (_playlistCount > 0) {
-            uint32_t req = _playlist[_currentPlaylistIndex].cyclesRequired;
-            if (req == 0) {
-                req = DEFAULT_CYCLES_PER_EFFECT;
-            }
-
-            // Only switch to next effect when all required cycles for current effect are completed
-            if (_completedCyclesForCurrent >= req) {
-                int nextIdx = calculateNextIndex();
-                applyPlaylistEntry(nextIdx);
-            }
-        }
-    }
+    // Synchronous execution handled directly in handleCycleComplete
 }
 
 void CycleManager::nextEffect() {
     if (_playlistCount <= 0) return;
     int nextIdx = calculateNextIndex();
-    applyPlaylistEntry(nextIdx);
+    applyPlaylistEntry(nextIdx, true);
+    if (_engine != nullptr) {
+        _engine->triggerImmediateStep();
+    }
 }
 
 void CycleManager::prevEffect() {
     if (_playlistCount <= 0) return;
     int prevIdx = (_currentPlaylistIndex - 1 + _playlistCount) % _playlistCount;
-    applyPlaylistEntry(prevIdx);
+    applyPlaylistEntry(prevIdx, true);
+    if (_engine != nullptr) {
+        _engine->triggerImmediateStep();
+    }
 }
 
 void CycleManager::setPlaylist(const PlaylistEntry entries[], int count) {
@@ -77,7 +67,7 @@ void CycleManager::setPlaylist(const PlaylistEntry entries[], int count) {
             _playlist[i].cyclesRequired = DEFAULT_CYCLES_PER_EFFECT;
         }
         if (_playlist[i].speedMs < SPEED_MIN_MS || _playlist[i].speedMs > SPEED_MAX_MS) {
-            _playlist[i].speedMs = SPEED_NORMAL_MS;
+            _playlist[i].speedMs = EffectLibrary::getDefaultSpeed(_playlist[i].effectIndex);
         }
     }
     _playlistCount = count;
@@ -85,7 +75,10 @@ void CycleManager::setPlaylist(const PlaylistEntry entries[], int count) {
     _completedCyclesForCurrent = 0;
     _cycleCompletePending = false;
 
-    applyPlaylistEntry(0);
+    applyPlaylistEntry(0, true);
+    if (_engine != nullptr) {
+        _engine->triggerImmediateStep();
+    }
 }
 
 void CycleManager::setDefaultPlaylist() {
@@ -97,7 +90,7 @@ void CycleManager::setDefaultPlaylist() {
     for (int i = 0; i < _playlistCount; i++) {
         _playlist[i].effectIndex = i;
         _playlist[i].cyclesRequired = DEFAULT_CYCLES_PER_EFFECT;
-        _playlist[i].speedMs = SPEED_NORMAL_MS;
+        _playlist[i].speedMs = EffectLibrary::getDefaultSpeed(i);
     }
 
     _currentPlaylistIndex = 0;
@@ -178,10 +171,23 @@ int CycleManager::getCurrentEffectIndex() const {
 void CycleManager::handleCycleComplete(int effectIndex, uint32_t completedCycles) {
     (void)effectIndex;
     (void)completedCycles;
-    _cycleCompletePending = true;
+    _completedCyclesForCurrent++;
+
+    if (_playlistCount > 0 && _currentPlaylistIndex < _playlistCount) {
+        uint32_t req = _playlist[_currentPlaylistIndex].cyclesRequired;
+        if (req == 0) {
+            req = DEFAULT_CYCLES_PER_EFFECT;
+        }
+
+        // When exact cycle count is reached, switch immediately to next effect with ZERO dead time!
+        if (_completedCyclesForCurrent >= req) {
+            int nextIdx = calculateNextIndex();
+            applyPlaylistEntry(nextIdx, false); // false = seamless transition on timer rhythm
+        }
+    }
 }
 
-void CycleManager::applyPlaylistEntry(int index) {
+void CycleManager::applyPlaylistEntry(int index, bool resetTimer) {
     if (_playlistCount <= 0) return;
     if (index < 0 || index >= _playlistCount) {
         index = 0;
@@ -191,12 +197,18 @@ void CycleManager::applyPlaylistEntry(int index) {
     _completedCyclesForCurrent = 0;
     _cycleCompletePending = false;
 
+    int newEffectIdx = _playlist[index].effectIndex;
+    uint32_t newSpeed = _playlist[index].speedMs;
+
     if (_engine != nullptr) {
-        _engine->setEffect(_playlist[index].effectIndex);
+        _engine->setEffect(newEffectIdx, resetTimer);
+        if (newSpeed > 0) {
+            _engine->setSpeed(newSpeed);
+        }
         _engine->start();
     }
-    if (_speedController != nullptr && _playlist[index].speedMs > 0) {
-        _speedController->setCustomSpeed(_playlist[index].speedMs);
+    if (_speedController != nullptr && newSpeed > 0) {
+        _speedController->setCustomSpeed(newSpeed);
     }
 }
 
@@ -207,7 +219,6 @@ int CycleManager::calculateNextIndex() const {
 
     if (_shuffleMode) {
         int next = _currentPlaylistIndex;
-        // Ensure next random pick is different from current
         for (int attempts = 0; attempts < 10; attempts++) {
             next = esp_random() % _playlistCount;
             if (next != _currentPlaylistIndex) break;

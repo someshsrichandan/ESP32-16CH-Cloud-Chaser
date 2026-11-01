@@ -61,7 +61,7 @@ export function AddEffectModal({
             <DialogTitle>Add Effect to Playlist</DialogTitle>
           </div>
           <DialogDescription className="text-zinc-400 text-xs">
-            Select a lighting pattern from the 30 built-in firmware effects.
+            Select a lighting pattern from the 18 native Arduino chase patterns.
           </DialogDescription>
 
           {/* Search Box */}

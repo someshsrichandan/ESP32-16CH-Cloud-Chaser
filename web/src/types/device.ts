@@ -9,6 +9,8 @@ export enum CommandType {
   STREAM_FRAME = 'stream_frame',
   LOAD_PATTERN = 'load_pattern',
   REQUEST_STATE = 'request_state',
+  SET_PLAYLIST = 'SET_PLAYLIST',
+  SET_MODE = 'SET_MODE',
 }
 
 export type ActionCommandType =
@@ -65,6 +67,9 @@ export interface DeviceCommand {
   name?: string
   speed?: number
   frames?: number[]
+  mode?: string
+  playlist?: any[]
+  entries?: any[]
 }
 
 export interface PlaylistEntry {
@@ -80,7 +85,7 @@ export interface EffectPreset {
   id: number
   name: string
   description: string
-  category: 'chase' | 'strobe' | 'random' | 'pattern' | 'fill' | 'wave'
+  category: 'chase' | 'strobe' | 'random' | 'pattern' | 'fill' | 'wave' | 'wipe' | 'bounce' | 'stack'
   defaultSpeed: number
   tags: string[]
   animationPattern: string

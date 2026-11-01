@@ -144,8 +144,9 @@ void CommandHandler::cmdSetEffect(const char* payloadJson) {
         }
 
         if (effIdx >= 0 && effIdx < EffectLibrary::getEffectCount()) {
-            effectEngine.setEffect(effIdx);
+            effectEngine.setEffect(effIdx, true);
             effectEngine.start();
+            effectEngine.triggerImmediateStep();
             configManager.setLastEffect(effIdx);
             configManager.setLastMode(0); // auto
             configManager.saveConfig();
@@ -212,7 +213,7 @@ void CommandHandler::cmdPrevEffect() {
 }
 
 void CommandHandler::cmdSetPlaylist(const char* payloadJson) {
-    StaticJsonDocument<512> doc;
+    StaticJsonDocument<2048> doc;
     DeserializationError err = deserializeJson(doc, payloadJson);
     if (!err) {
         JsonArray plArr;
@@ -231,16 +232,26 @@ void CommandHandler::cmdSetPlaylist(const char* payloadJson) {
                 if (count >= MAX_PLAYLIST_ENTRIES) {
                     break;
                 }
-                entries[count].effectIndex = item["effectIndex"] | 0;
-                entries[count].cyclesRequired = item["cycles"] | (item["cyclesRequired"] | DEFAULT_CYCLES_PER_EFFECT);
-                entries[count].speedMs = item["speed"] | (item["speedMs"] | SPEED_NORMAL_MS);
+                int effId = item["effectIndex"] | (item["id"] | 0);
+                if (effId < 0 || effId >= EffectLibrary::getEffectCount()) {
+                    effId = 0;
+                }
+                entries[count].effectIndex = effId;
+                entries[count].cyclesRequired = item["cycles"] | (item["cyclesRequired"] | (item["reps"] | DEFAULT_CYCLES_PER_EFFECT));
+                entries[count].speedMs = item["speed"] | (item["speedMs"] | (item["ms"] | EffectLibrary::getDefaultSpeed(effId)));
                 count++;
             }
             if (count > 0) {
+                Serial.printf("[CMD] Loaded custom playlist with %d entries\n", count);
                 cycleManager.setPlaylist(entries, count);
+                effectEngine.start();
+                configManager.setLastMode(0); // auto
+                configManager.saveConfig();
             }
         }
         statusManager.markChanged();
+    } else {
+        Serial.printf("[CMD] Failed to parse playlist JSON: %s\n", err.c_str());
     }
 }
 

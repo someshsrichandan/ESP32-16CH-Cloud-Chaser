@@ -25,7 +25,7 @@ type ValidCommandType = typeof VALID_COMMAND_TYPES[number]
 
 const CommandSchema = z.object({
   cmd: z.string().min(1),
-  payload: z.record(z.unknown()).optional(),
+  payload: z.union([z.record(z.unknown()), z.array(z.unknown())]).optional(),
   ch: z.number().optional(),
   v: z.union([z.number(), z.string()]).optional(),
   id: z.number().optional(),
@@ -33,6 +33,8 @@ const CommandSchema = z.object({
   mask: z.number().optional(),
   name: z.string().optional(),
   speed: z.number().optional(),
+  playlist: z.array(z.unknown()).optional(),
+  entries: z.array(z.unknown()).optional(),
 })
 
 export async function POST(
@@ -84,11 +86,11 @@ export async function POST(
         targetCmd = 'MASTER_ON'
       } else if (act === 'all_off') {
         targetCmd = 'MASTER_OFF'
-      } else if (act === 'pause_auto') {
+      } else if (act === 'pause_auto' || act === 'pause') {
         targetCmd = 'PAUSE'
-      } else if (act === 'toggle_run' || act === 'auto_on') {
+      } else if (act === 'toggle_run' || act === 'auto_on' || act === 'resume') {
         targetCmd = 'RESUME'
-      } else if (act === 'auto_off') {
+      } else if (act === 'auto_off' || act === 'stop') {
         targetCmd = 'STOP'
       } else if (act === 'next') {
         targetCmd = 'NEXT_EFFECT'
@@ -105,6 +107,17 @@ export async function POST(
       } else if (act === 'invert') {
         targetCmd = 'SET_RELAY'
         targetPayload = { invert: true }
+      } else if (act === 'toggle_auto') {
+        targetCmd = 'SET_MODE'
+        targetPayload = { mode: 'auto' }
+      } else if (act === 'toggle_shuffle') {
+        targetCmd = 'NEXT_EFFECT'
+      }
+    } else if (targetCmd === 'SET_PLAYLIST' || targetCmd === 'playlist' || targetCmd === 'PLAYLIST') {
+      targetCmd = 'SET_PLAYLIST'
+      const pl = rawData.playlist || rawData.entries || (Array.isArray(rawData.payload) ? rawData.payload : (targetPayload.playlist || targetPayload.entries))
+      if (Array.isArray(pl)) {
+        targetPayload = { playlist: pl }
       }
     } else if (targetCmd === 'effect' || targetCmd === 'EFFECT') {
       targetCmd = 'SET_EFFECT'

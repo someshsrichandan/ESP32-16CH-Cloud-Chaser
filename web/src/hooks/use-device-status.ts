@@ -26,6 +26,7 @@ export function useDeviceStatus(
 
   // Fetch status via REST (used initially and as fallback)
   const fetchStatusFallback = useCallback(async () => {
+    if (!deviceId) return
     try {
       const res = await fetch(`/api/device/${deviceId}/status`)
       if (res.ok) {
@@ -41,6 +42,11 @@ export function useDeviceStatus(
   }, [deviceId])
 
   useEffect(() => {
+    if (!deviceId) {
+      setStatus(null)
+      setOnline(false)
+      return
+    }
     let mounted = true
 
     // Initial fetch

@@ -29,19 +29,14 @@ const DeviceContext = React.createContext<DeviceContextValue | undefined>(undefi
 const STORAGE_KEY = 'esp32_active_device_id'
 
 export function DeviceProvider({ children }: { children: React.ReactNode }) {
-  const [activeDeviceId, setActiveDeviceIdState] = React.useState<string>('')
+  const [activeDeviceId, setActiveDeviceIdState] = React.useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(STORAGE_KEY) || ''
+    }
+    return ''
+  })
   const [devices, setDevices] = React.useState<RegisteredDevice[]>([])
   const [isLoadingDevices, setIsLoadingDevices] = React.useState<boolean>(true)
-
-  // Load initial from localStorage on mount
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        setActiveDeviceIdState(saved)
-      }
-    }
-  }, [])
 
   const setActiveDeviceId = React.useCallback((id: string) => {
     setActiveDeviceIdState(id)

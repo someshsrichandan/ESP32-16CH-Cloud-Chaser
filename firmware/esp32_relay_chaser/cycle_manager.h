@@ -17,8 +17,7 @@ struct PlaylistEntry {
 
 /**
  * @class CycleManager
- * @brief Manages playlist sequencing, cycle counting, shuffle/sequential modes,
- * and guaranteed mid-cycle protection.
+ * @brief Manages playlist sequencing, cycle counting, and zero-dead-time transitions.
  */
 class CycleManager {
 public:
@@ -31,7 +30,6 @@ public:
 
     /**
      * @brief Update function called in main Arduino loop().
-     * Checks cycle completion flags and advances effect when cycles requirement is satisfied.
      */
     void update();
 
@@ -53,18 +51,12 @@ public:
     void setPlaylist(const PlaylistEntry entries[], int count);
 
     /**
-     * @brief Load the default playlist incorporating all 30 effects.
+     * @brief Load the default playlist incorporating all 18 effects with 5-cycle defaults.
      */
     void setDefaultPlaylist();
 
     /**
      * @brief Retrieve status information about active and subsequent effects.
-     * @param effectName Destination buffer for current effect name.
-     * @param maxEffectLen Size of destination buffer.
-     * @param currentCycle Reference to store current 1-based cycle number.
-     * @param totalCycles Reference to store total cycles required for this effect.
-     * @param nextEffectName Destination buffer for next effect name.
-     * @param maxNextLen Size of next effect destination buffer.
      */
     void getCurrent(char* effectName, size_t maxEffectLen,
                     uint32_t& currentCycle, uint32_t& totalCycles,
@@ -96,6 +88,11 @@ public:
     int getCurrentEffectIndex() const;
 
     /**
+     * @brief Apply playlist entry with optional timer reset for zero dead time.
+     */
+    void applyPlaylistEntry(int index, bool resetTimer = false);
+
+    /**
      * @brief Internal handler for engine cycle complete callback.
      */
     void handleCycleComplete(int effectIndex, uint32_t completedCycles);
@@ -113,9 +110,8 @@ private:
     bool _sequentialMode;
     volatile bool _cycleCompletePending;
 
-    void applyPlaylistEntry(int index);
     int calculateNextIndex() const;
 
-    static CycleManager* s_instance;
     static void cycleCallbackThunk(int effectIndex, uint32_t completedCycles);
+    static CycleManager* s_instance;
 };

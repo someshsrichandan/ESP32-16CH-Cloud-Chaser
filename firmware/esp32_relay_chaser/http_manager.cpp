@@ -4,7 +4,7 @@
 #include <WiFiClient.h>
 
 // Use static response buffer to avoid heap fragmentation
-static char s_respBuf[1024];
+static char s_respBuf[2048];
 
 void HttpManager::begin() {
     // Clients created per-request
@@ -109,7 +109,7 @@ bool HttpManager::pollCommands() {
     }
 
     // Parse response: { "commands": [{ "cmd": "...", "payload": {...}, "_id": "..." }] }
-    StaticJsonDocument<768> doc;
+    StaticJsonDocument<2048> doc;
     DeserializationError err = deserializeJson(doc, s_respBuf);
     if (err) return false;
 
@@ -118,7 +118,7 @@ bool HttpManager::pollCommands() {
 
     for (JsonObject cmdObj : cmds) {
         const char* cmd = cmdObj["cmd"] | "";
-        static char payloadStr[256];
+        static char payloadStr[1536];
         if (cmdObj.containsKey("payload")) {
             serializeJson(cmdObj["payload"], payloadStr, sizeof(payloadStr));
         } else {

@@ -25,7 +25,7 @@ export async function GET() {
     const result = devices.map((d) => {
       const s = statusMap.get(d.deviceId)
       const updatedAt = s?.updatedAt ? new Date(s.updatedAt).getTime() : 0
-      const isOnline = (now - updatedAt) < 10000
+      const isOnline = (now - updatedAt) < 20000
 
       return {
         deviceId: d.deviceId,

@@ -32,10 +32,16 @@ public:
     void update();
 
     /**
-     * @brief Set and switch to a new effect index. Resets cycle and step states.
-     * @param effectIndex 0-29 index into effect library.
+     * @brief Set and switch to a new effect index.
+     * @param effectIndex 0 to EFFECT_COUNT-1 index into effect library.
+     * @param resetTimer If true, resets _lastStepTime to millis(); if false, maintains cadence.
      */
-    void setEffect(int effectIndex);
+    void setEffect(int effectIndex, bool resetTimer = true);
+
+    /**
+     * @brief Immediately apply current frame to relays without waiting for next tick.
+     */
+    void triggerImmediateStep();
 
     /**
      * @brief Update the step execution interval in milliseconds.

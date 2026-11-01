@@ -14,6 +14,13 @@ export function useDeviceCommand(deviceId: string = 'esp32_relay_01') {
       payload: Partial<DeviceCommand> = {},
       options?: { silent?: boolean; successMsg?: string }
     ): Promise<boolean> => {
+      if (!deviceId) {
+        if (!options?.silent) {
+          toast.error('No active ESP32 device selected')
+        }
+        return false
+      }
+
       setIsPending(true)
       setError(null)
 

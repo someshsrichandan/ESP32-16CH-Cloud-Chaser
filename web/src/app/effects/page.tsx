@@ -64,7 +64,7 @@ export default function EffectsPage() {
               Pattern & Effect Library
             </h1>
             <span className="rounded-full bg-cyan-500/20 px-2.5 py-0.5 text-xs font-mono font-bold text-cyan-300 border border-cyan-500/40">
-              30 Built-in Sequences
+              18 Native Arduino Chase Patterns
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1">
@@ -88,7 +88,7 @@ export default function EffectsPage() {
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
           <Input
             type="text"
-            placeholder="Search 30 effects by title, category, or style..."
+            placeholder="Search 18 patterns by title, category, or style..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 bg-zinc-950/70 border-zinc-800 text-xs"

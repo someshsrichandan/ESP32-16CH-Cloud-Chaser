@@ -45,7 +45,7 @@ export async function GET(
 
           if (statusDoc) {
             const updatedAt = statusDoc.updatedAt ? new Date(statusDoc.updatedAt).getTime() : 0
-            const online = (Date.now() - updatedAt) < 10000
+            const online = (Date.now() - updatedAt) < 20000
 
             const rawRelays = Array.isArray(statusDoc.relays) ? statusDoc.relays : []
             const relays: boolean[] = []

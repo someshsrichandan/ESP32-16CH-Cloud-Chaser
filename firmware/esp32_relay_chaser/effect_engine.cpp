@@ -47,14 +47,23 @@ void EffectEngine::update() {
     }
 }
 
-void EffectEngine::setEffect(int effectIndex) {
+void EffectEngine::setEffect(int effectIndex, bool resetTimer) {
     if (effectIndex < 0 || effectIndex >= EffectLibrary::getEffectCount()) {
         return;
     }
     _currentEffectIndex = effectIndex;
     _cycleCount = 0;
-    _lastStepTime = millis();
+    if (resetTimer) {
+        _lastStepTime = millis();
+    }
     resetInternalState();
+}
+
+void EffectEngine::triggerImmediateStep() {
+    if (_gpio != nullptr && _running && !_paused) {
+        _lastStepTime = millis();
+        EffectLibrary::runEffectStep(_currentEffectIndex, this, _gpio);
+    }
 }
 
 void EffectEngine::setSpeed(uint32_t speedMs) {
@@ -90,7 +99,6 @@ void EffectEngine::stop() {
 void EffectEngine::start() {
     _running = true;
     _paused = false;
-    _lastStepTime = millis();
 }
 
 bool EffectEngine::isRunning() const {
