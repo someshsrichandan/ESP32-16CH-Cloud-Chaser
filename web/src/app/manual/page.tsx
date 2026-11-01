@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { motion } from 'framer-motion'
+import { useActiveDevice } from '@/context/device-context'
 import { useDeviceStatus } from '@/hooks/use-device-status'
 import { RelayGrid } from '@/components/manual/relay-grid'
 import { ModeBadge } from '@/components/ui/mode-badge'
@@ -9,8 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Sliders, ShieldCheck } from 'lucide-react'
 
 export default function ManualControlPage() {
-  const deviceId = 'esp32_relay_01'
-  const { status, online } = useDeviceStatus(deviceId)
+  const { activeDeviceId } = useActiveDevice()
+  const { status, online } = useDeviceStatus(activeDeviceId)
 
   return (
     <motion.div
@@ -46,7 +47,7 @@ export default function ManualControlPage() {
 
       {/* 4x4 Interactive Matrix Grid */}
       <RelayGrid
-        deviceId={deviceId}
+        deviceId={activeDeviceId}
         incomingRelays={status?.relays}
         disabled={false}
       />

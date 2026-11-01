@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useDeviceStatus } from '@/hooks/use-device-status'
+import { useActiveDevice } from '@/context/device-context'
 import { signOut, useSession } from 'next-auth/react'
 
 const NAV_ITEMS = [
@@ -59,7 +60,8 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { online, isConnected } = useDeviceStatus('esp32_relay_01')
+  const { activeDeviceId, activeDevice } = useActiveDevice()
+  const { online, isConnected } = useDeviceStatus(activeDeviceId)
   const { data: session } = useSession()
 
   return (
@@ -131,10 +133,12 @@ export function Sidebar() {
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-zinc-600" />
                 )}
               </span>
-              <div className="flex flex-col">
-                <span className="text-xs font-medium text-zinc-200">ESP-32 Core</span>
+              <div className="flex flex-col truncate pr-2">
+                <span className="text-xs font-medium text-zinc-200 truncate">
+                  {activeDevice?.deviceName || activeDeviceId || 'ESP-32 Core'}
+                </span>
                 <span className="text-[10px] font-mono text-zinc-500">
-                  {online ? 'Online (HTTP)' : 'Waiting for link'}
+                  {online ? (activeDevice?.ip ? `${activeDevice.ip} (Online)` : 'Online (HTTP)') : 'Offline / Waiting'}
                 </span>
               </div>
             </div>

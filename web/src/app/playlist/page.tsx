@@ -22,6 +22,7 @@ import { AddEffectModal } from '@/components/playlist/add-effect-modal'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { useActiveDevice } from '@/context/device-context'
 import { useDeviceCommand } from '@/hooks/use-device-command'
 import { PlaylistEntry, CommandType } from '@/types/device'
 import { toast } from 'sonner'
@@ -47,8 +48,8 @@ const DEFAULT_PLAYLIST: PlaylistEntry[] = [
 ]
 
 export default function PlaylistPage() {
-  const deviceId = 'esp32_relay_01'
-  const { sendCommand, isPending } = useDeviceCommand(deviceId)
+  const { activeDeviceId } = useActiveDevice()
+  const { sendCommand, isPending } = useDeviceCommand(activeDeviceId)
 
   const [playlist, setPlaylist] = React.useState<PlaylistEntry[]>(DEFAULT_PLAYLIST)
   const [modalOpen, setModalOpen] = React.useState(false)

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { motion } from 'framer-motion'
+import { useActiveDevice } from '@/context/device-context'
 import { useDeviceStatus } from '@/hooks/use-device-status'
 import { useDeviceCommand } from '@/hooks/use-device-command'
 import { ConnectionStatusCard } from '@/components/dashboard/connection-status'
@@ -29,9 +30,9 @@ import {
 } from 'lucide-react'
 
 export default function DashboardPage() {
-  const deviceId = 'esp32_relay_01'
-  const { status, online, lastUpdate, refresh } = useDeviceStatus(deviceId)
-  const { sendCommand, isPending } = useDeviceCommand(deviceId)
+  const { activeDeviceId } = useActiveDevice()
+  const { status, online, lastUpdate, refresh } = useDeviceStatus(activeDeviceId)
+  const { sendCommand, isPending } = useDeviceCommand(activeDeviceId)
 
   const handleAction = async (action: string, successMsg?: string) => {
     await sendCommand(CommandType.ACTION, { a: action }, { successMsg })

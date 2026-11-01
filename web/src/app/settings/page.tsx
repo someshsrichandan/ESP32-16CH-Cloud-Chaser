@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { useActiveDevice } from '@/context/device-context'
 import { useDeviceStatus } from '@/hooks/use-device-status'
 import { useDeviceCommand } from '@/hooks/use-device-command'
 import { CommandType } from '@/types/device'
@@ -24,6 +25,8 @@ import {
   RefreshCw,
   Server,
   Radio,
+  Trash2,
+  Check,
 } from 'lucide-react'
 
 interface RegisteredDevice {
@@ -37,7 +40,15 @@ interface RegisteredDevice {
 }
 
 export default function SettingsPage() {
-  const [activeDeviceId, setActiveDeviceId] = React.useState('esp32_relay_01')
+  const {
+    activeDeviceId,
+    setActiveDeviceId,
+    devices,
+    isLoadingDevices,
+    refreshDevices,
+    deleteDevice,
+  } = useActiveDevice()
+
   const { status, online } = useDeviceStatus(activeDeviceId)
   const { sendCommand, isPending } = useDeviceCommand(activeDeviceId)
 
@@ -46,44 +57,29 @@ export default function SettingsPage() {
   const [resetDialogOpen, setResetDialogOpen] = React.useState(false)
   const [otaProgress, setOtaProgress] = React.useState<number | null>(null)
 
-  // Registration modal & device list
-  const [devices, setDevices] = React.useState<RegisteredDevice[]>([])
-  const [isLoadingDevices, setIsLoadingDevices] = React.useState(false)
+  // Registration modal
   const [registerDialogOpen, setRegisterDialogOpen] = React.useState(false)
   const [newDeviceId, setNewDeviceId] = React.useState('')
   const [newDeviceName, setNewDeviceName] = React.useState('')
   const [isRegistering, setIsRegistering] = React.useState(false)
 
-  const fetchDevices = React.useCallback(async () => {
-    setIsLoadingDevices(true)
-    try {
-      const res = await fetch('/api/device/list')
-      if (res.ok) {
-        const data = await res.json()
-        setDevices(data)
-        if (data.length > 0 && !data.some((d: RegisteredDevice) => d.deviceId === activeDeviceId)) {
-          setActiveDeviceId(data[0].deviceId)
-        }
-      }
-    } catch {
-      // Fallback silently if offline
-    } finally {
-      setIsLoadingDevices(false)
-    }
-  }, [activeDeviceId])
-
-  React.useEffect(() => {
-    fetchDevices()
-  }, [fetchDevices])
-
   React.useEffect(() => {
     if (status?.totalCycles) {
       setDefaultRepeats(status.totalCycles)
     }
-    if (status?.deviceId) {
-      setActiveDeviceId(status.deviceId)
+  }, [status?.totalCycles])
+
+  const handleDeleteDevice = async (deviceIdToDelete: string) => {
+    if (!confirm(`Are you sure you want to remove node ${deviceIdToDelete}?`)) {
+      return
     }
-  }, [status?.totalCycles, status?.deviceId])
+    const ok = await deleteDevice(deviceIdToDelete)
+    if (ok) {
+      toast.success(`Device ${deviceIdToDelete} removed from MongoDB`)
+    } else {
+      toast.error(`Failed to remove device ${deviceIdToDelete}`)
+    }
+  }
 
   const handleSaveSettings = async () => {
     await sendCommand(CommandType.REPEATS, { v: defaultRepeats }, {
@@ -114,7 +110,7 @@ export default function SettingsPage() {
         setRegisterDialogOpen(false)
         setNewDeviceId('')
         setNewDeviceName('')
-        fetchDevices()
+        refreshDevices()
       } else {
         const err = await res.json()
         toast.error(err.error || 'Failed to register device')
@@ -208,7 +204,7 @@ export default function SettingsPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchDevices}
+            onClick={refreshDevices}
             disabled={isLoadingDevices}
             className="h-8 text-xs text-zinc-400 hover:text-zinc-100"
           >
@@ -224,29 +220,53 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {devices.map((dev) => (
-                <div
-                  key={dev.deviceId}
-                  onClick={() => setActiveDeviceId(dev.deviceId)}
-                  className={`cursor-pointer rounded-lg border p-3 transition-all ${
-                    dev.deviceId === activeDeviceId
-                      ? 'border-cyan-500/60 bg-cyan-950/20 shadow-glow-cyan-sm'
-                      : 'border-zinc-800 bg-zinc-950/40 hover:border-zinc-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold text-xs text-zinc-100">{dev.deviceName}</span>
-                    <Badge variant={dev.online ? 'online' : 'offline'} className="text-[10px] px-1.5 py-0">
-                      {dev.online ? 'Online' : 'Offline'}
-                    </Badge>
+              {devices.map((dev) => {
+                const isActive = dev.deviceId === activeDeviceId
+                return (
+                  <div
+                    key={dev.deviceId}
+                    onClick={() => setActiveDeviceId(dev.deviceId)}
+                    className={`cursor-pointer rounded-lg border p-3.5 transition-all relative group ${
+                      isActive
+                        ? 'border-cyan-500 bg-cyan-950/20 shadow-glow-cyan-sm'
+                        : 'border-zinc-800 bg-zinc-950/40 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-1.5 truncate pr-2">
+                        <span className="font-semibold text-xs text-zinc-100 truncate">{dev.deviceName}</span>
+                        {isActive && (
+                          <span className="rounded bg-cyan-500/20 px-1 py-0.2 text-[9px] font-mono font-bold text-cyan-300">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Badge variant={dev.online ? 'online' : 'offline'} className="text-[10px] px-1.5 py-0">
+                          {dev.online ? 'Online' : 'Offline'}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Delete Device"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteDevice(dev.deviceId)
+                          }}
+                          className="h-6 w-6 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 ml-1"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1 font-mono text-[11px] text-zinc-400">
+                      <div>ID: <span className="text-zinc-200">{dev.deviceId}</span></div>
+                      <div>IP: <span className="text-cyan-400">{dev.ip || 'DHCP Assigned'}</span></div>
+                      <div>Firmware: <span className="text-zinc-300">{dev.firmware}</span></div>
+                    </div>
                   </div>
-                  <div className="space-y-1 font-mono text-[11px] text-zinc-400">
-                    <div>ID: <span className="text-zinc-200">{dev.deviceId}</span></div>
-                    <div>IP: <span className="text-cyan-400">{dev.ip || 'DHCP Assigned'}</span></div>
-                    <div>Firmware: <span className="text-zinc-300">{dev.firmware}</span></div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { motion } from 'framer-motion'
+import { useActiveDevice } from '@/context/device-context'
 import { useDeviceStatus } from '@/hooks/use-device-status'
 import { useDeviceCommand } from '@/hooks/use-device-command'
 import { EffectCard } from '@/components/effects/effect-card'
@@ -13,9 +14,9 @@ import { Search, Sparkles, Filter, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function EffectsPage() {
-  const deviceId = 'esp32_relay_01'
-  const { status } = useDeviceStatus(deviceId)
-  const { sendCommand, isPending } = useDeviceCommand(deviceId)
+  const { activeDeviceId } = useActiveDevice()
+  const { status } = useDeviceStatus(activeDeviceId)
+  const { sendCommand, isPending } = useDeviceCommand(activeDeviceId)
 
   const [search, setSearch] = React.useState('')
   const [activeCategory, setActiveCategory] = React.useState('all')

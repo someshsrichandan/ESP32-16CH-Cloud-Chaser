@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useActiveDevice } from '@/context/device-context'
 import { useDeviceStatus } from '@/hooks/use-device-status'
 import { useDeviceCommand } from '@/hooks/use-device-command'
 import { CommandType } from '@/types/device'
@@ -31,9 +32,9 @@ interface LogMessage {
 }
 
 export default function DiagnosticsPage() {
-  const deviceId = 'esp32_relay_01'
-  const { status, online, lastUpdate, refresh } = useDeviceStatus(deviceId)
-  const { sendCommand, isPending } = useDeviceCommand(deviceId)
+  const { activeDeviceId } = useActiveDevice()
+  const { status, online, lastUpdate, refresh } = useDeviceStatus(activeDeviceId)
+  const { sendCommand, isPending } = useDeviceCommand(activeDeviceId)
 
   const [logs, setLogs] = React.useState<LogMessage[]>([
     {
@@ -77,7 +78,7 @@ export default function DiagnosticsPage() {
       }
       setLogs((prev) => [newEntry, ...prev.slice(0, 49)])
     }
-  }, [status, deviceId])
+  }, [status, activeDeviceId])
 
   const handlePing = async () => {
     await sendCommand(CommandType.REQUEST_STATE, {}, { successMsg: 'State query dispatched' })
