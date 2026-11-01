@@ -1,0 +1,160 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth'
+import { z } from 'zod'
+import { getDb } from '@/lib/mongodb'
+
+const VALID_COMMAND_TYPES = [
+  'SET_RELAY',
+  'MASTER_ON',
+  'MASTER_OFF',
+  'EMERGENCY_STOP',
+  'SET_MODE',
+  'SET_EFFECT',
+  'SET_SPEED',
+  'PAUSE',
+  'RESUME',
+  'STOP',
+  'NEXT_EFFECT',
+  'PREV_EFFECT',
+  'SET_PLAYLIST',
+] as const
+
+type ValidCommandType = typeof VALID_COMMAND_TYPES[number]
+
+const CommandSchema = z.object({
+  cmd: z.string().min(1),
+  payload: z.record(z.unknown()).optional(),
+  ch: z.number().optional(),
+  v: z.union([z.number(), z.string()]).optional(),
+  id: z.number().optional(),
+  a: z.string().optional(),
+  mask: z.number().optional(),
+  name: z.string().optional(),
+  speed: z.number().optional(),
+})
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { deviceId: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized: Operator authentication required' },
+        { status: 401 }
+      )
+    }
+
+    const { deviceId } = params
+    if (!deviceId) {
+      return NextResponse.json({ error: 'Device ID is required' }, { status: 400 })
+    }
+
+    const body = await request.json().catch(() => ({}))
+    const parsed = CommandSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: parsed.error.format() },
+        { status: 400 }
+      )
+    }
+
+    const rawData = parsed.data
+    let targetCmd = rawData.cmd.trim()
+    let targetPayload: Record<string, unknown> = rawData.payload ? { ...rawData.payload } : {}
+
+    // Normalize legacy command invocations into one of the 13 valid commands
+    if (targetCmd === 'relay' || targetCmd === 'RELAY') {
+      targetCmd = 'SET_RELAY'
+      targetPayload = {
+        relay: rawData.ch ?? targetPayload.relay ?? targetPayload.ch ?? 0,
+        state: rawData.v ?? targetPayload.state ?? targetPayload.v ?? 1,
+        ...targetPayload,
+      }
+    } else if (targetCmd === 'action' || targetCmd === 'ACTION') {
+      const act = rawData.a || targetPayload.a
+      if (act === 'all_on') {
+        targetCmd = 'MASTER_ON'
+      } else if (act === 'all_off') {
+        targetCmd = 'MASTER_OFF'
+      } else if (act === 'pause_auto') {
+        targetCmd = 'PAUSE'
+      } else if (act === 'toggle_run' || act === 'auto_on') {
+        targetCmd = 'RESUME'
+      } else if (act === 'auto_off') {
+        targetCmd = 'STOP'
+      } else if (act === 'next') {
+        targetCmd = 'NEXT_EFFECT'
+      } else if (act === 'prev') {
+        targetCmd = 'PREV_EFFECT'
+      } else if (act === 'emergency_stop') {
+        targetCmd = 'EMERGENCY_STOP'
+      }
+    } else if (targetCmd === 'effect' || targetCmd === 'EFFECT') {
+      targetCmd = 'SET_EFFECT'
+      targetPayload = {
+        effectIndex: rawData.id ?? targetPayload.id ?? targetPayload.effectIndex ?? 0,
+        ...targetPayload,
+      }
+    } else if (targetCmd === 'speed' || targetCmd === 'SPEED') {
+      targetCmd = 'SET_SPEED'
+      targetPayload = {
+        speed: rawData.v ?? targetPayload.speed ?? targetPayload.v ?? 120,
+        ...targetPayload,
+      }
+    }
+
+    // Validate that final cmd is one of the 13 supported commands
+    if (!VALID_COMMAND_TYPES.includes(targetCmd as ValidCommandType)) {
+      return NextResponse.json(
+        {
+          error: `Invalid command type '${targetCmd}'. Must be one of: ${VALID_COMMAND_TYPES.join(', ')}`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const db = await getDb()
+
+    // Verify that device is registered
+    let device = await db.collection('devices').findOne({ deviceId })
+    if (!device) {
+      if (process.env.NODE_ENV === 'development' || deviceId === 'esp32_relay_01') {
+        await db.collection('devices').insertOne({
+          deviceId,
+          deviceSecret: 'dev_secret_auto_created',
+          deviceName: `ESP32 Controller (${deviceId})`,
+          firmware: 'v2.0',
+          registeredAt: new Date(),
+          lastSeenAt: new Date(),
+        })
+        device = await db.collection('devices').findOne({ deviceId })
+      } else {
+        return NextResponse.json(
+          { error: `Device '${deviceId}' not found in registered devices` },
+          { status: 404 }
+        )
+      }
+    }
+
+    // Insert pending command into command_queue
+    await db.collection('command_queue').insertOne({
+      deviceId,
+      cmd: targetCmd,
+      payload: targetPayload,
+      createdAt: new Date(),
+      status: 'pending',
+    })
+
+    return NextResponse.json({ ok: true, queued: true, cmd: targetCmd })
+  } catch (error: any) {
+    console.error('[API Command Error]:', error)
+    return NextResponse.json(
+      { error: 'Internal Server Error while dispatching command' },
+      { status: 500 }
+    )
+  }
+}

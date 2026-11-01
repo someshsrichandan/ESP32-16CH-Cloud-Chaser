@@ -1,0 +1,45 @@
+# ==========================================
+# Root .gitignore for ESP32 16-CH Relay Chaser
+# ==========================================
+
+# Node & Next.js dependencies and build output
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+
+# Environment variables & secrets (NEVER commit secrets)
+.env
+.env*.local
+*.local
+web/.env.local
+!.env.example
+!web/.env.example
+
+# Embedded / PlatformIO / Arduino
+.pio/
+.pioenvs/
+.piolibdeps/
+*.hex
+*.bin
+*.elf
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System metadata
+.DS_Store
+Thumbs.db
+desktop.ini
