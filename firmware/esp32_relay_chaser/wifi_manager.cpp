@@ -46,7 +46,15 @@ void WiFiManager::loop() {
 
             char ipBuf[32];
             getIP(ipBuf, sizeof(ipBuf));
-            Serial.printf("[WiFi] Connected! IP: %s, RSSI: %d dBm\n", ipBuf, getRSSI());
+            Serial.println();
+            Serial.println("==================================================");
+            Serial.println("  [WiFi] CONNECTED TO WIFI SUCCESSFULLY! ");
+            Serial.printf ("  [WiFi] SSID        : %s\n", _ssid);
+            Serial.printf ("  [WiFi] IP Address  : %s\n", ipBuf);
+            Serial.printf ("  [WiFi] Gateway     : %s\n", WiFi.gatewayIP().toString().c_str());
+            Serial.printf ("  [WiFi] Signal RSSI : %d dBm\n", getRSSI());
+            Serial.println("==================================================");
+            Serial.println();
         }
     } else {
         if (_state == WIFI_STATE_CONNECTED) {
@@ -102,7 +110,7 @@ WiFiState WiFiManager::getState() const {
 }
 
 void WiFiManager::initiateConnection() {
-    Serial.printf("[WiFi] Connecting to \"%s\" (Backoff: %u ms)...\n", _ssid, _backoffMs);
+    Serial.printf("[WiFi] Connecting to Wi-Fi SSID: \"%s\" (Backoff: %lu ms)...\n", _ssid, (unsigned long)_backoffMs);
     WiFi.begin(_ssid, _password);
     _connectStartTime = millis();
     _state = WIFI_STATE_CONNECTING;

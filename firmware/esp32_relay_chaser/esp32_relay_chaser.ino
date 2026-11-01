@@ -113,29 +113,37 @@ void loop() {
 
     // Only do cloud HTTP when Wi-Fi is connected
     if (wifiManager.isConnected()) {
-        // Register device once on connection
+        static unsigned long lastRegisterAttempt = 0;
+
+        // Register device on connection (retry every 5 seconds if not yet registered)
         if (!deviceRegistered) {
-            deviceRegistered = httpManager.registerDevice(
-                configManager.getDeviceId(),
-                configManager.getDeviceSecret(),
-                configManager.getDeviceName()
-            );
-            if (deviceRegistered) {
-                statusManager.pushStatusNow();
+            if (now - lastRegisterAttempt >= 5000) {
+                lastRegisterAttempt = now;
+                deviceRegistered = httpManager.registerDevice(
+                    configManager.getDeviceId(),
+                    configManager.getDeviceSecret(),
+                    configManager.getDeviceName()
+                );
+                if (deviceRegistered) {
+                    statusManager.pushStatusNow();
+                }
+            }
+        } else {
+            // ── Poll for commands every 1 second ─────────────────
+            if (now - lastCommandPoll >= COMMAND_POLL_INTERVAL_MS) {
+                lastCommandPoll = now;
+                httpManager.pollCommands();
+            }
+
+            // ── Push status every 2 seconds ──────────────────────
+            if (now - lastStatusPush >= STATUS_PUSH_INTERVAL_MS) {
+                lastStatusPush = now;
+                statusManager.loop();
             }
         }
-
-        // ── Poll for commands every 1 second ─────────────────
-        if (now - lastCommandPoll >= COMMAND_POLL_INTERVAL_MS) {
-            lastCommandPoll = now;
-            httpManager.pollCommands();
-        }
-
-        // ── Push status every 2 seconds ──────────────────────
-        if (now - lastStatusPush >= STATUS_PUSH_INTERVAL_MS) {
-            lastStatusPush = now;
-            statusManager.loop();
-        }
+    } else {
+        // Reset registration state when Wi-Fi disconnects
+        deviceRegistered = false;
     }
 
     // ── Diagnostics periodic print ───────────────────────────

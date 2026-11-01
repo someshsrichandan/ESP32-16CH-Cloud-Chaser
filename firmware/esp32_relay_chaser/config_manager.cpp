@@ -64,7 +64,10 @@ void ConfigManager::loadConfig() {
     if (_prefs.isKey("ssid")) {
         _prefs.getString("ssid", _wifiSSID, sizeof(_wifiSSID));
     } else {
-        // Fallback to default in config.h
+        _wifiSSID[0] = '\0';
+    }
+    // If NVS is empty or unconfigured, fallback to default in config.h
+    if (_wifiSSID[0] == '\0' && strlen(DEFAULT_WIFI_SSID) > 0) {
         strncpy(_wifiSSID, DEFAULT_WIFI_SSID, sizeof(_wifiSSID) - 1);
         _wifiSSID[sizeof(_wifiSSID) - 1] = '\0';
     }
@@ -72,7 +75,9 @@ void ConfigManager::loadConfig() {
     if (_prefs.isKey("pass")) {
         _prefs.getString("pass", _wifiPassword, sizeof(_wifiPassword));
     } else {
-        // Fallback to default in config.h
+        _wifiPassword[0] = '\0';
+    }
+    if (_wifiPassword[0] == '\0' && strlen(DEFAULT_WIFI_PASSWORD) > 0) {
         strncpy(_wifiPassword, DEFAULT_WIFI_PASSWORD, sizeof(_wifiPassword) - 1);
         _wifiPassword[sizeof(_wifiPassword) - 1] = '\0';
     }
@@ -80,6 +85,9 @@ void ConfigManager::loadConfig() {
     if (_prefs.isKey("apiUrl")) {
         _prefs.getString("apiUrl", _apiBaseUrl, sizeof(_apiBaseUrl));
     } else {
+        _apiBaseUrl[0] = '\0';
+    }
+    if (_apiBaseUrl[0] == '\0' && strlen(DEFAULT_API_BASE_URL) > 0) {
         strncpy(_apiBaseUrl, DEFAULT_API_BASE_URL, sizeof(_apiBaseUrl) - 1);
         _apiBaseUrl[sizeof(_apiBaseUrl) - 1] = '\0';
     }

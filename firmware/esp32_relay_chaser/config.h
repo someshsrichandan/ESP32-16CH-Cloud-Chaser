@@ -16,8 +16,8 @@ const int RELAY_PINS[16] = {25, 4, 5, 26, 13, 27, 15, 32, 16, 17, 18, 19, 21, 22
 // ─── Default Wi-Fi Credentials (Fallback) ──────────────────────────
 // You can enter your Wi-Fi SSID and Password here so it connects automatically!
 // You can also change this anytime via the phone web panel at 192.168.4.1
-#define DEFAULT_WIFI_SSID         ""      // Put your 2.4GHz Wi-Fi SSID here (e.g. "MyHomeWiFi")
-#define DEFAULT_WIFI_PASSWORD     ""      // Put your Wi-Fi Password here
+#define DEFAULT_WIFI_SSID         "loki"        // Auto-connects to your Wi-Fi
+#define DEFAULT_WIFI_PASSWORD     "lokijiowifi" // Your Wi-Fi password
 
 // ─── Local Access Point & Web Configuration Portal ─────────────────
 #define AP_SSID_DEFAULT           "ESP32-Relay-Setup"
