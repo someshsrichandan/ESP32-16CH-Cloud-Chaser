@@ -1,6 +1,7 @@
 // ============================================================
 // ESP32 16-Channel Wi-Fi Relay Chaser — HTTP Edition v2.0
 // Direct HTTPS REST communication to Vercel API & MongoDB
+// Includes Local Web Configuration Portal (SoftAP 192.168.4.1)
 // ============================================================
 #include <Arduino.h>
 #include "config.h"
@@ -15,6 +16,7 @@
 #include "http_manager.h"
 #include "status_manager.h"
 #include "command_handler.h"
+#include "portal_manager.h"
 
 // ─── Subsystem Global Instances ──────────────────────────────
 GPIOController   gpioController;
@@ -40,7 +42,7 @@ void setup() {
     diagnostics.initWatchdog(WATCHDOG_TIMEOUT_MS);
 
     // ── 3. Load configuration from NVS ───────────────────────
-    configManager.begin(); // may block for first-boot serial wizard
+    configManager.begin();
     configManager.printConfig();
 
     // ── 4. Speed controller ──────────────────────────────────
@@ -55,40 +57,40 @@ void setup() {
     // ── 6. Cycle manager ─────────────────────────────────────
     cycleManager.init(&effectEngine, &speedController);
 
-    // ── 7. Wi-Fi ─────────────────────────────────────────────
+    // ── 7. Local Web Configuration Portal (SoftAP 192.168.4.1)
+    portalManager.begin();
+
+    // ── 8. Connect to Station Wi-Fi ──────────────────────────
     wifiManager.begin(configManager.getWifiSSID(), configManager.getWifiPassword());
-    Serial.print("[WiFi] Connecting");
-    while (!wifiManager.isConnected()) {
+    
+    // Quick non-blocking connection wait window (up to 5 seconds)
+    Serial.print("[WiFi] Connecting to '");
+    Serial.print(configManager.getWifiSSID());
+    Serial.println("'...");
+
+    unsigned long wifiWaitStart = millis();
+    while (!wifiManager.isConnected() && (millis() - wifiWaitStart < 5000)) {
         wifiManager.loop();
-        Serial.print(".");
-        delay(500);
+        portalManager.loop();
+        delay(200);
         diagnostics.feedWatchdog();
     }
-    char ipBuf[32];
-    wifiManager.getIP(ipBuf, sizeof(ipBuf));
-    Serial.printf("\n[WiFi] Connected! IP: %s\n", ipBuf);
 
-    // ── 8. HTTP Manager + Command Handler ────────────────────
+    if (wifiManager.isConnected()) {
+        char ipBuf[32];
+        wifiManager.getIP(ipBuf, sizeof(ipBuf));
+        Serial.printf("[WiFi] Connected! Station IP: %s\n", ipBuf);
+    } else {
+        Serial.println("[WiFi] Not connected yet. Connect your phone to 'ESP32-Relay-Setup' at 192.168.4.1 to configure!");
+    }
+
+    // ── 9. HTTP Manager + Command Handler ────────────────────
     httpManager.begin();
     commandHandler.begin();
     httpManager.setCommandCallback(CommandHandler::handleCommand);
 
-    // ── 9. Register device with server ───────────────────────
-    Serial.println("[HTTP] Registering device...");
-    deviceRegistered = httpManager.registerDevice(
-        configManager.getDeviceId(),
-        configManager.getDeviceSecret(),
-        configManager.getDeviceName()
-    );
-    if (deviceRegistered) {
-        Serial.println("[HTTP] Device registered OK");
-    } else {
-        Serial.println("[HTTP] Registration failed (will retry on poll)");
-    }
-
     // ── 10. Status Manager ───────────────────────────────────
     statusManager.begin();
-    statusManager.pushStatusNow(); // immediate first push
 
     Serial.printf("[BOOT] Ready. Device ID: %s\n", configManager.getDeviceId());
 }
@@ -99,15 +101,29 @@ void loop() {
     // ── Feed watchdog ─────────────────────────────────────────
     diagnostics.feedWatchdog();
 
-    // ── Wi-Fi reconnect ───────────────────────────────────────
+    // ── Local Web Portal (192.168.4.1) ───────────────────────
+    portalManager.loop();
+
+    // ── Wi-Fi reconnect state machine ─────────────────────────
     wifiManager.loop();
 
     // ── Run effect engine (non-blocking) ─────────────────────
     effectEngine.update();
     cycleManager.update();
 
-    // Only do HTTP when Wi-Fi is connected
+    // Only do cloud HTTP when Wi-Fi is connected
     if (wifiManager.isConnected()) {
+        // Register device once on connection
+        if (!deviceRegistered) {
+            deviceRegistered = httpManager.registerDevice(
+                configManager.getDeviceId(),
+                configManager.getDeviceSecret(),
+                configManager.getDeviceName()
+            );
+            if (deviceRegistered) {
+                statusManager.pushStatusNow();
+            }
+        }
 
         // ── Poll for commands every 1 second ─────────────────
         if (now - lastCommandPoll >= COMMAND_POLL_INTERVAL_MS) {

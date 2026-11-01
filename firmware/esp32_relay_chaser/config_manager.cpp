@@ -1,71 +1,10 @@
 #include "config_manager.h"
 #include "config.h"
 #include <esp_system.h>
-#include <esp_task_wdt.h>
+#include <esp_mac.h>
 #include <string.h>
 
 #define NVS_NAMESPACE "rchaser"
-
-static void readLineFromSerial(char* buffer, size_t maxLen) {
-    size_t idx = 0;
-    while (true) {
-        esp_task_wdt_reset();
-        while (Serial.available() > 0) {
-            char c = static_cast<char>(Serial.read());
-            if (c == '\r') {
-                continue;
-            }
-            if (c == '\n') {
-                if (idx > 0) {
-                    buffer[idx] = '\0';
-                    return;
-                }
-                continue;
-            }
-            if (c == '\b' || c == 127) {
-                if (idx > 0) {
-                    idx--;
-                    Serial.print("\b \b");
-                }
-                continue;
-            }
-            if (idx < maxLen - 1) {
-                buffer[idx++] = c;
-                Serial.print(c);
-            }
-        }
-        delay(10);
-    }
-}
-
-static void readLineAllowEmpty(char* buffer, size_t maxLen) {
-    size_t idx = 0;
-    while (true) {
-        esp_task_wdt_reset();
-        while (Serial.available() > 0) {
-            char c = static_cast<char>(Serial.read());
-            if (c == '\r') {
-                continue;
-            }
-            if (c == '\n') {
-                buffer[idx] = '\0';
-                return;
-            }
-            if (c == '\b' || c == 127) {
-                if (idx > 0) {
-                    idx--;
-                    Serial.print("\b \b");
-                }
-                continue;
-            }
-            if (idx < maxLen - 1) {
-                buffer[idx++] = c;
-                Serial.print(c);
-            }
-        }
-        delay(10);
-    }
-}
 
 void ConfigManager::begin() {
     _prefs.begin(NVS_NAMESPACE, false);
@@ -80,39 +19,6 @@ void ConfigManager::begin() {
         generateSecret();
         saveConfig();
     }
-
-    // First-boot wizard: prompt via Serial if Wi-Fi SSID is not set
-    if (_wifiSSID[0] == '\0') {
-        Serial.println();
-        Serial.println("==================================================");
-        Serial.println("     ESP32 RELAY CHASER - FIRST BOOT SETUP        ");
-        Serial.println("==================================================");
-        Serial.println("No Wi-Fi credentials found in flash memory.");
-        Serial.println("Please enter settings using Serial Monitor.");
-        Serial.println("Ensure line ending is set to Newline (LF) or Both.");
-        Serial.println("==================================================");
-
-        Serial.print("Enter Wi-Fi SSID: ");
-        readLineFromSerial(_wifiSSID, sizeof(_wifiSSID));
-        Serial.println();
-
-        Serial.print("Enter Wi-Fi Password: ");
-        readLineFromSerial(_wifiPassword, sizeof(_wifiPassword));
-        Serial.println();
-
-        Serial.printf("Enter API Base URL (press Enter for default '%s'): ", DEFAULT_API_BASE_URL);
-        char urlBuf[128];
-        readLineAllowEmpty(urlBuf, sizeof(urlBuf));
-        Serial.println();
-        if (urlBuf[0] != '\0') {
-            strncpy(_apiBaseUrl, urlBuf, sizeof(_apiBaseUrl) - 1);
-            _apiBaseUrl[sizeof(_apiBaseUrl) - 1] = '\0';
-        }
-
-        saveConfig();
-        Serial.println("[Config] Settings saved to NVS successfully!");
-        Serial.println("==================================================");
-    }
 }
 
 void ConfigManager::generateDeviceId() {
@@ -126,12 +32,12 @@ void ConfigManager::generateSecret() {
     uint32_t r2 = esp_random();
     uint32_t r3 = esp_random();
     uint32_t r4 = esp_random();
-    snprintf(_deviceSecret, sizeof(_deviceSecret), "%08x%08x%08x%08x", r1, r2, r3, r4);
+    snprintf(_deviceSecret, sizeof(_deviceSecret), "%08lx%08lx%08lx%08lx", 
+             (unsigned long)r1, (unsigned long)r2, (unsigned long)r3, (unsigned long)r4);
 }
 
 void ConfigManager::loadConfig() {
     if (!_prefs.begin(NVS_NAMESPACE, true)) {
-        // Namespace may not exist yet; initialize defaults
         resetToDefaults();
         return;
     }
@@ -158,13 +64,17 @@ void ConfigManager::loadConfig() {
     if (_prefs.isKey("ssid")) {
         _prefs.getString("ssid", _wifiSSID, sizeof(_wifiSSID));
     } else {
-        _wifiSSID[0] = '\0';
+        // Fallback to default in config.h
+        strncpy(_wifiSSID, DEFAULT_WIFI_SSID, sizeof(_wifiSSID) - 1);
+        _wifiSSID[sizeof(_wifiSSID) - 1] = '\0';
     }
 
     if (_prefs.isKey("pass")) {
         _prefs.getString("pass", _wifiPassword, sizeof(_wifiPassword));
     } else {
-        _wifiPassword[0] = '\0';
+        // Fallback to default in config.h
+        strncpy(_wifiPassword, DEFAULT_WIFI_PASSWORD, sizeof(_wifiPassword) - 1);
+        _wifiPassword[sizeof(_wifiPassword) - 1] = '\0';
     }
 
     if (_prefs.isKey("apiUrl")) {
@@ -208,8 +118,10 @@ void ConfigManager::resetToDefaults() {
 
     strncpy(_deviceName, DEVICE_NAME_DEFAULT, sizeof(_deviceName) - 1);
     _deviceName[sizeof(_deviceName) - 1] = '\0';
-    _wifiSSID[0] = '\0';
-    _wifiPassword[0] = '\0';
+    strncpy(_wifiSSID, DEFAULT_WIFI_SSID, sizeof(_wifiSSID) - 1);
+    _wifiSSID[sizeof(_wifiSSID) - 1] = '\0';
+    strncpy(_wifiPassword, DEFAULT_WIFI_PASSWORD, sizeof(_wifiPassword) - 1);
+    _wifiPassword[sizeof(_wifiPassword) - 1] = '\0';
     strncpy(_apiBaseUrl, DEFAULT_API_BASE_URL, sizeof(_apiBaseUrl) - 1);
     _apiBaseUrl[sizeof(_apiBaseUrl) - 1] = '\0';
     _lastEffect = 0;

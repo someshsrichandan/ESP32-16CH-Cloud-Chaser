@@ -72,3 +72,5 @@ private:
     uint16_t _currentBitmask;  ///< Current logical state of all 16 relays (1 = ON, 0 = OFF)
     bool _stateChanged;        ///< Flag set whenever any relay state changes
 };
+
+extern GPIOController gpioController;

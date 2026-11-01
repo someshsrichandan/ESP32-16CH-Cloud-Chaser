@@ -13,9 +13,22 @@ const int RELAY_PINS[16] = {25, 4, 5, 26, 13, 27, 15, 32, 16, 17, 18, 19, 21, 22
 #define RELAY_ON  LOW
 #define RELAY_OFF HIGH
 
+// ─── Default Wi-Fi Credentials (Fallback) ──────────────────────────
+// You can enter your Wi-Fi SSID and Password here so it connects automatically!
+// You can also change this anytime via the phone web panel at 192.168.4.1
+#define DEFAULT_WIFI_SSID         ""      // Put your 2.4GHz Wi-Fi SSID here (e.g. "MyHomeWiFi")
+#define DEFAULT_WIFI_PASSWORD     ""      // Put your Wi-Fi Password here
+
+// ─── Local Access Point & Web Configuration Portal ─────────────────
+#define AP_SSID_DEFAULT           "ESP32-Relay-Setup"
+#define AP_PASSWORD_DEFAULT       ""      // Empty string = open Wi-Fi network for easy phone setup
+#define AP_PORTAL_IP              IPAddress(192, 168, 4, 1)
+#define AP_PORTAL_GW              IPAddress(192, 168, 4, 1)
+#define AP_PORTAL_SUBNET          IPAddress(255, 255, 255, 0)
+
 // ─── HTTP API Configuration ────────────────────────────────────────
 // These are stored in NVS and loaded at boot. Defaults shown here.
-#define DEFAULT_API_BASE_URL      "https://your-app.vercel.app"
+#define DEFAULT_API_BASE_URL      "https://esp32-16-ch-cloud-chaser.vercel.app"
 #define DEFAULT_API_STATUS_PATH   "/api/esp/status"
 #define DEFAULT_API_POLL_PATH     "/api/esp/poll"
 #define DEFAULT_API_REGISTER_PATH "/api/esp/register"
@@ -36,7 +49,7 @@ const int RELAY_PINS[16] = {25, 4, 5, 26, 13, 27, 15, 32, 16, 17, 18, 19, 21, 22
 #define SPEED_MIN           20
 #define SPEED_MAX         2000
 
-// ─── Compatibility Aliases for Unchanged Subsystem Modules ──────────
+// ─── Compatibility Aliases for Subsystem Modules ───────────────────
 #define FIRMWARE_NAME        DEVICE_NAME_DEFAULT
 #define RELAY_COUNT          NUM_RELAYS
 #define RELAY_ACTIVE_LEVEL   RELAY_ON
@@ -50,8 +63,14 @@ const int RELAY_PINS[16] = {25, 4, 5, 26, 13, 27, 15, 32, 16, 17, 18, 19, 21, 22
 #define SPEED_MIN_MS         SPEED_MIN
 #define SPEED_MAX_MS         SPEED_MAX
 
-#define MAX_SSID_LEN         64
-#define MAX_PASSWORD_LEN     64
+#ifndef CFG_MAX_SSID_LEN
+#define CFG_MAX_SSID_LEN     64
+#endif
+
+#ifndef CFG_MAX_PASSWORD_LEN
+#define CFG_MAX_PASSWORD_LEN 64
+#endif
+
 #define MAX_DEVICE_ID_LEN    32
 #define MAX_PLAYLIST_ENTRIES 32
 #define DEFAULT_CYCLES_PER_EFFECT 3

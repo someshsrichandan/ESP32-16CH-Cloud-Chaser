@@ -27,7 +27,7 @@ void WiFiManager::begin(const char* ssid, const char* password) {
     _state = WIFI_STATE_DISCONNECTED;
     _lastStateChangeTime = millis();
 
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
     WiFi.setAutoReconnect(true);
 
     if (_ssid[0] != '\0') {

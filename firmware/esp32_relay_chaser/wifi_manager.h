@@ -49,6 +49,7 @@ public:
      * @brief Get current Wi-Fi Received Signal Strength Indicator (RSSI) in dBm.
      */
     int getRSSI() const;
+    const char* getSSID() const { return _ssid; }
 
     /**
      * @brief Get current connection state enum.
@@ -56,8 +57,8 @@ public:
     WiFiState getState() const;
 
 private:
-    char _ssid[MAX_SSID_LEN];
-    char _password[MAX_PASSWORD_LEN];
+    char _ssid[CFG_MAX_SSID_LEN];
+    char _password[CFG_MAX_PASSWORD_LEN];
 
     WiFiState _state;
     unsigned long _lastStateChangeTime;
@@ -66,3 +67,5 @@ private:
 
     void initiateConnection();
 };
+
+extern WiFiManager wifiManager;
