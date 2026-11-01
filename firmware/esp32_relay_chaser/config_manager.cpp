@@ -93,7 +93,7 @@ void ConfigManager::loadConfig() {
     } else {
         _apiBaseUrl[0] = '\0';
     }
-    if (_apiBaseUrl[0] == '\0' && strlen(DEFAULT_API_BASE_URL) > 0) {
+    if (_apiBaseUrl[0] == '\0' || strcmp(_apiBaseUrl, "https://esp32-16-ch-cloud-chaser.vercel.app") == 0) {
         strncpy(_apiBaseUrl, DEFAULT_API_BASE_URL, sizeof(_apiBaseUrl) - 1);
         _apiBaseUrl[sizeof(_apiBaseUrl) - 1] = '\0';
     }

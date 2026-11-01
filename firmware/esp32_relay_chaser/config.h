@@ -28,7 +28,7 @@ const int RELAY_PINS[16] = {25, 4, 5, 26, 13, 27, 15, 32, 16, 17, 18, 19, 21, 22
 
 // ─── HTTP API Configuration ────────────────────────────────────────
 // These are stored in NVS and loaded at boot. Defaults shown here.
-#define DEFAULT_API_BASE_URL      "https://esp32-16-ch-cloud-chaser.vercel.app"
+#define DEFAULT_API_BASE_URL      "https://esp-32-16-ch-cloud-chaser.vercel.app"
 #define DEFAULT_API_STATUS_PATH   "/api/esp/status"
 #define DEFAULT_API_POLL_PATH     "/api/esp/poll"
 #define DEFAULT_API_REGISTER_PATH "/api/esp/register"

@@ -14,6 +14,7 @@ extern GPIOController gpioController;
 extern EffectEngine effectEngine;
 extern SpeedController speedController;
 extern CycleManager cycleManager;
+extern StatusManager statusManager;
 
 void CommandHandler::begin() {
     // Registered in httpManager during setup()
@@ -52,6 +53,8 @@ void CommandHandler::handleCommand(const char* cmd, const char* payloadJson) {
         cmdPrevEffect();
     } else if (strcasecmp(cmd, "SET_PLAYLIST") == 0) {
         cmdSetPlaylist(payloadJson);
+    } else if (strcasecmp(cmd, "REQUEST_STATE") == 0) {
+        statusManager.pushStatusNow();
     } else {
         Serial.printf("[CMD] Unknown command ignored: %s\n", cmd);
     }
@@ -71,6 +74,10 @@ void CommandHandler::cmdSetRelay(const char* payloadJson) {
         if (doc.containsKey("bitmask")) {
             uint16_t mask = doc["bitmask"];
             gpioController.setRelayPattern(mask);
+        }
+        if (doc["invert"] | false) {
+            uint16_t cur = gpioController.getRelayBitmask();
+            gpioController.setRelayPattern(~cur);
         }
     }
     configManager.setLastMode(1); // manual mode

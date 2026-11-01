@@ -25,9 +25,22 @@ export async function POST(req: NextRequest) {
 
     if (existing) {
       if (existing.deviceSecret && existing.deviceSecret !== deviceSecret) {
-        return NextResponse.json(
-          { error: 'Unauthorized: Device secret mismatch' },
-          { status: 401 }
+        if (existing.deviceSecret.startsWith('secret_') && (!existing.lastStatusAt || existing.ip === 'N/A' || !existing.ip)) {
+          // Adopt physical hardware secret on initial pairing
+          await devices.updateOne(
+            { deviceId },
+            { $set: { deviceSecret, lastSeenAt: new Date() } }
+          )
+        } else {
+          return NextResponse.json(
+            { error: 'Unauthorized: Device secret mismatch' },
+            { status: 401 }
+          )
+        }
+      } else if (!existing.deviceSecret) {
+        await devices.updateOne(
+          { deviceId },
+          { $set: { deviceSecret, lastSeenAt: new Date() } }
         )
       }
       await devices.updateOne(

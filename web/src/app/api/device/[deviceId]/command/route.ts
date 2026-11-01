@@ -18,6 +18,7 @@ const VALID_COMMAND_TYPES = [
   'NEXT_EFFECT',
   'PREV_EFFECT',
   'SET_PLAYLIST',
+  'REQUEST_STATE',
 ] as const
 
 type ValidCommandType = typeof VALID_COMMAND_TYPES[number]
@@ -66,12 +67,15 @@ export async function POST(
     let targetCmd = rawData.cmd.trim()
     let targetPayload: Record<string, unknown> = rawData.payload ? { ...rawData.payload } : {}
 
-    // Normalize legacy command invocations into one of the 13 valid commands
+    // Normalize legacy command invocations into one of the valid commands
     if (targetCmd === 'relay' || targetCmd === 'RELAY') {
       targetCmd = 'SET_RELAY'
+      const channel = rawData.ch ?? targetPayload.channel ?? targetPayload.relay ?? targetPayload.ch ?? 0
+      const state = (rawData.v ?? targetPayload.state ?? targetPayload.v ?? 1) ? true : false
       targetPayload = {
-        relay: rawData.ch ?? targetPayload.relay ?? targetPayload.ch ?? 0,
-        state: rawData.v ?? targetPayload.state ?? targetPayload.v ?? 1,
+        channel,
+        relay: channel,
+        state,
         ...targetPayload,
       }
     } else if (targetCmd === 'action' || targetCmd === 'ACTION') {
@@ -92,6 +96,15 @@ export async function POST(
         targetCmd = 'PREV_EFFECT'
       } else if (act === 'emergency_stop') {
         targetCmd = 'EMERGENCY_STOP'
+      } else if (act === 'odd') {
+        targetCmd = 'SET_RELAY'
+        targetPayload = { bitmask: 0xAAAA }
+      } else if (act === 'even') {
+        targetCmd = 'SET_RELAY'
+        targetPayload = { bitmask: 0x5555 }
+      } else if (act === 'invert') {
+        targetCmd = 'SET_RELAY'
+        targetPayload = { invert: true }
       }
     } else if (targetCmd === 'effect' || targetCmd === 'EFFECT') {
       targetCmd = 'SET_EFFECT'
@@ -103,6 +116,14 @@ export async function POST(
       targetCmd = 'SET_SPEED'
       targetPayload = {
         speed: rawData.v ?? targetPayload.speed ?? targetPayload.v ?? 120,
+        ...targetPayload,
+      }
+    } else if (targetCmd.toLowerCase() === 'request_state') {
+      targetCmd = 'REQUEST_STATE'
+    } else if (targetCmd.toLowerCase() === 'repeats') {
+      targetCmd = 'SET_MODE'
+      targetPayload = {
+        cycles: rawData.v ?? targetPayload.v ?? targetPayload.cycles ?? 3,
         ...targetPayload,
       }
     }
