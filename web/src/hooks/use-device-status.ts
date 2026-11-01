@@ -9,7 +9,7 @@ interface UseDeviceStatusOptions {
 }
 
 export function useDeviceStatus(
-  deviceId: string = 'esp32_relay_01',
+  deviceId: string = '',
   options: UseDeviceStatusOptions = {}
 ) {
   const { pollingFallbackIntervalMs = 3000 } = options

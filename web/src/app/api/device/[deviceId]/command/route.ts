@@ -154,24 +154,12 @@ export async function POST(
     const db = await getDb()
 
     // Verify that device is registered
-    let device = await db.collection('devices').findOne({ deviceId })
+    const device = await db.collection('devices').findOne({ deviceId })
     if (!device) {
-      if (process.env.NODE_ENV === 'development' || deviceId === 'esp32_relay_01') {
-        await db.collection('devices').insertOne({
-          deviceId,
-          deviceSecret: 'dev_secret_auto_created',
-          deviceName: `ESP32 Controller (${deviceId})`,
-          firmware: 'v2.0',
-          registeredAt: new Date(),
-          lastSeenAt: new Date(),
-        })
-        device = await db.collection('devices').findOne({ deviceId })
-      } else {
-        return NextResponse.json(
-          { error: `Device '${deviceId}' not found in registered devices` },
-          { status: 404 }
-        )
-      }
+      return NextResponse.json(
+        { error: `Device '${deviceId}' not found in registered devices` },
+        { status: 404 }
+      )
     }
 
     // Insert pending command into command_queue

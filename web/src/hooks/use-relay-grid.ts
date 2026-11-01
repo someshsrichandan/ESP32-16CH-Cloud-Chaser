@@ -5,7 +5,7 @@ import { useDeviceCommand } from './use-device-command'
 import { CommandType } from '@/types/device'
 
 export function useRelayGrid(
-  deviceId: string = 'esp32_relay_01',
+  deviceId: string = '',
   incomingRelays?: boolean[]
 ) {
   const [relays, setRelays] = useState<boolean[]>(new Array(16).fill(false))

@@ -42,6 +42,31 @@ void CycleManager::nextEffect() {
     }
 }
 
+void CycleManager::jumpToEffect(int effectIndex) {
+    if (_playlistCount <= 0) {
+        setDefaultPlaylist();
+    }
+    // Search if this effect exists in current playlist
+    for (int i = 0; i < _playlistCount; i++) {
+        if (_playlist[i].effectIndex == effectIndex) {
+            _currentPlaylistIndex = i;
+            _completedCyclesForCurrent = 0;
+            _cycleCompletePending = false;
+            applyPlaylistEntry(i, true);
+            if (_engine != nullptr) {
+                _engine->triggerImmediateStep();
+            }
+            return;
+        }
+    }
+    // If not found in current playlist, build a single-entry playlist for it
+    PlaylistEntry singleEntry;
+    singleEntry.effectIndex = effectIndex;
+    singleEntry.cyclesRequired = DEFAULT_CYCLES_PER_EFFECT;
+    singleEntry.speedMs = EffectLibrary::getDefaultSpeed(effectIndex);
+    setPlaylist(&singleEntry, 1);
+}
+
 void CycleManager::prevEffect() {
     if (_playlistCount <= 0) return;
     int prevIdx = (_currentPlaylistIndex - 1 + _playlistCount) % _playlistCount;

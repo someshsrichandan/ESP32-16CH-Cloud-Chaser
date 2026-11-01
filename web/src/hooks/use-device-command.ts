@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import { DeviceCommand, CommandType } from '@/types/device'
 
-export function useDeviceCommand(deviceId: string = 'esp32_relay_01') {
+export function useDeviceCommand(deviceId: string = '') {
   const [isPending, setIsPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

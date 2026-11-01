@@ -31,7 +31,9 @@ const STORAGE_KEY = 'esp32_active_device_id'
 export function DeviceProvider({ children }: { children: React.ReactNode }) {
   const [activeDeviceId, setActiveDeviceIdState] = React.useState<string>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem(STORAGE_KEY) || ''
+      const saved = localStorage.getItem(STORAGE_KEY) || ''
+      if (saved === 'esp32_relay_01') return ''
+      return saved
     }
     return ''
   })
@@ -54,15 +56,33 @@ export function DeviceProvider({ children }: { children: React.ReactNode }) {
         setDevices(data)
 
         setActiveDeviceIdState((currentId) => {
-          // If current ID is valid and exists in devices, keep it
-          const exists = data.some((d) => d.deviceId === currentId)
-          if (currentId && exists) {
+          if (currentId === 'esp32_relay_01') {
+            currentId = ''
+          }
+
+          const currentDev = data.find((d) => d.deviceId === currentId)
+          // If current device is valid and online, keep it
+          if (currentId && currentDev && currentDev.online) {
             return currentId
           }
 
-          // Otherwise pick the first online device, or first available device
-          const onlineDev = data.find((d) => d.online)
-          const chosen = onlineDev?.deviceId || data[0]?.deviceId || ''
+          // If an online real hardware device exists, prioritize it immediately
+          const onlineDev = data.find((d) => d.online && d.deviceId !== 'esp32_relay_01')
+          if (onlineDev) {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(STORAGE_KEY, onlineDev.deviceId)
+            }
+            return onlineDev.deviceId
+          }
+
+          // Otherwise keep current if it still exists
+          if (currentId && currentDev) {
+            return currentId
+          }
+
+          // Fallback to first non-dummy device
+          const fallback = data.find((d) => d.deviceId !== 'esp32_relay_01') || data[0]
+          const chosen = fallback?.deviceId || ''
 
           if (chosen && typeof window !== 'undefined') {
             localStorage.setItem(STORAGE_KEY, chosen)

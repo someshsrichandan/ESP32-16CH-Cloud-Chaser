@@ -27,9 +27,6 @@ void StatusManager::begin() {
 
 void StatusManager::markChanged() {
     _changed = true;
-    if (wifiManager.isConnected()) {
-        pushStatusNow();
-    }
 }
 
 void StatusManager::pushStatusNow() {

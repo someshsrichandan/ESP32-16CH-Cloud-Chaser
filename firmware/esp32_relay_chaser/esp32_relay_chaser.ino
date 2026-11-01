@@ -135,11 +135,8 @@ void loop() {
                 httpManager.pollCommands();
             }
 
-            // ── Push status every 2 seconds ──────────────────────
-            if (now - lastStatusPush >= STATUS_PUSH_INTERVAL_MS) {
-                lastStatusPush = now;
-                statusManager.loop();
-            }
+            // ── Push status (pushes immediately if command changed state, or every 2s) ──
+            statusManager.loop();
         }
     } else {
         // Reset registration state when Wi-Fi disconnects

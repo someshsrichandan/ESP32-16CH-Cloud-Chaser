@@ -61,6 +61,7 @@ void CommandHandler::handleCommand(const char* cmd, const char* payloadJson) {
 }
 
 void CommandHandler::cmdSetRelay(const char* payloadJson) {
+    effectEngine.stop(); // Halt auto effects immediately so manual pin state is not overwritten!
     StaticJsonDocument<512> doc;
     DeserializationError err = deserializeJson(doc, payloadJson);
     if (!err) {
@@ -144,9 +145,8 @@ void CommandHandler::cmdSetEffect(const char* payloadJson) {
         }
 
         if (effIdx >= 0 && effIdx < EffectLibrary::getEffectCount()) {
-            effectEngine.setEffect(effIdx, true);
+            cycleManager.jumpToEffect(effIdx);
             effectEngine.start();
-            effectEngine.triggerImmediateStep();
             configManager.setLastEffect(effIdx);
             configManager.setLastMode(0); // auto
             configManager.saveConfig();

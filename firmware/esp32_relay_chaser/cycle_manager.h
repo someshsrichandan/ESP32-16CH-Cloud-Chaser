@@ -93,6 +93,11 @@ public:
     void applyPlaylistEntry(int index, bool resetTimer = false);
 
     /**
+     * @brief Jump directly to a specific effect, starting it immediately.
+     */
+    void jumpToEffect(int effectIndex);
+
+    /**
      * @brief Internal handler for engine cycle complete callback.
      */
     void handleCycleComplete(int effectIndex, uint32_t completedCycles);
