@@ -1,224 +1,136 @@
-# ESP32 16-Channel Smart Wi-Fi Relay Chaser Controller
+# ESP32 × 16-Channel Relay Controller PRO (v8.5)
 
-**v2.0 — Direct HTTP + MongoDB (No MQTT, No Redis, No Broker)**
+A high-performance, standalone 16-channel relay chaser and lighting sequencer for the **ESP32** and **UCTRONICS 16-Channel Relay Module**. Features an embedded cyberpunk dark-mode web controller hosted directly on the ESP32, 25 non-blocking chase effects, 5 curated presets, dual WiFi mode (SoftAP + Home WiFi Station), and glitch-free active-LOW hardware switching.
 
-A professional 16-channel relay chaser controller built on ESP32 with a modern Next.js web dashboard hosted on Vercel. Control 16 relays remotely from anywhere — no port forwarding, no static IP, no router configuration required.
+No cloud brokers, no external servers, and zero delay timers — runs completely standalone or on your local WiFi network.
 
 ---
 
-## How It Works
+## ⚡ Key Highlights
+
+- **Embedded Cyberpunk Web Panel**: Beautiful, dark-mode web GUI served directly from ESP32 PROGMEM flash memory on port 80.
+- **Dual WiFi Mode (`WIFI_AP_STA`)**:
+  - **Direct Access Point**: Connect to `ESP32_Relay` (Password: `12345678`) and open `http://192.168.4.1`.
+  - **Local Home WiFi**: Connects to your router (`loki`) in the background so you can access the panel from any browser on your home network.
+- **25 Non-Blocking Chase Effects**: Left/Right chaser, bounce, center-out, zip-unzip, binary counter, sparkle, heartbeat, cylon eye, fireworks, meteor, strobe, and stack build — all powered by non-blocking `millis()` state machines.
+- **5 Curated Lighting Presets**:
+  1. 🌟 **Grand Showcase** — Auto-cycles all 25 effects
+  2. ⚡ **High Energy & Strobes** — Rapid flashes, sparkles & heartbeats
+  3. 🌊 **Waves & Smooth Chasers** — Cylon scanners, fluid chases & bounces
+  4. 🌧️ **Atmospheric & Fireworks** — Cascades, meteors, raindrops & explosions
+  5. 🎭 **Matrix & Dual Bounce** — Alternating grids, counter-crossing dots & binary
+- **Glitch-Free Active-LOW Safe Boot**: 3-step GPIO initialization (`INPUT_PULLUP` → latch `HIGH` → `OUTPUT`) prevents false relay clicks on boot.
+- **Unified State Machine**: Smooth transitions between **Auto Run**, **Single FX Loop**, **Manual Relay Override**, and **Master OFF**.
+- **Hardware Watchdog**: 30-second hardware watchdog protects against hangs.
+
+---
+
+## 🔌 Hardware Wiring Diagram
 
 ```
-ESP32 (your hardware)
-  │
-  ├─ POST /api/esp/status   every 2s  ──► Vercel API ──► MongoDB
-  └─ GET  /api/esp/poll     every 1s  ◄── Vercel API ◄── MongoDB
-                                                │
-                          Your Browser ◄── SSE Stream ◄──┘
-                          (Dashboard, Manual, Effects, Playlist)
+ [12V DC Power Adapter]
+     (+) ────────────────────────► DC+ on Relay Board (Coil Power)
+     (-) ──────────────┬─────────► DC- on Relay Board
+                       │
+ [ESP32 Dev Module]    └─────────► GND on Relay Board (Common Ground)
+     GND ────────────────────────► GND on Relay Board Signal Header
+     3.3V ───────────────────────► VCC on Relay Board Signal Header
+       (IMPORTANT: Remove JD1 jumper on the relay board first!)
+
+     GPIO 25 ────────────────────► IN1  (Relay 1)
+     GPIO  4 ────────────────────► IN2  (Relay 2)
+     GPIO  5 ────────────────────► IN3  (Relay 3)
+     GPIO 26 ────────────────────► IN4  (Relay 4)
+     GPIO 13 ────────────────────► IN5  (Relay 5)
+     GPIO 27 ────────────────────► IN6  (Relay 6)
+     GPIO 15 ────────────────────► IN7  (Relay 7)
+     GPIO 32 ────────────────────► IN8  (Relay 8)
+     GPIO 16 ────────────────────► IN9  (Relay 9)
+     GPIO 17 ────────────────────► IN10 (Relay 10)
+     GPIO 18 ────────────────────► IN11 (Relay 11)
+     GPIO 19 ────────────────────► IN12 (Relay 12)
+     GPIO 21 ────────────────────► IN13 (Relay 13)
+     GPIO 22 ────────────────────► IN14 (Relay 14)
+     GPIO 23 ────────────────────► IN15 (Relay 15)
+     GPIO 33 ────────────────────► IN16 (Relay 16)
 ```
 
-The ESP32 makes direct HTTPS requests to your Vercel app. No MQTT broker, no Redis — just MongoDB as the single database.
+> ⚠️ **CRITICAL POWER INSTRUCTIONS**:
+> 1. Power relay coils with **12V DC** on `DC+` and `DC-`.
+> 2. **Remove the JD1 jumper** to isolate 12V coil power from 3.3V ESP32 logic.
+> 3. Connect ESP32 `3.3V` to `VCC` on the relay board input header.
+> 4. Power the ESP32 via its micro-USB / Type-C port. Never feed 12V into the ESP32.
 
 ---
 
-## Project Structure
+## 🚀 How to Flash & Run
 
-```
-esp32-relay-chaser/
-├── README.md                        ← You are here
-├── firmware/
-│   └── esp32_relay_chaser/          ← ESP32 Arduino firmware (PlatformIO)
-│       ├── esp32_relay_chaser.ino   ← Main entry point
-│       ├── config.h                 ← GPIO map, timing, speed presets
-│       ├── gpio_controller.*        ← Centralized relay control (Active-LOW)
-│       ├── effect_engine.*          ← Non-blocking millis() effect runner
-│       ├── effect_library.*         ← All 30 chasing effects
-│       ├── cycle_manager.*          ← Playlist & cycle sequencer
-│       ├── speed_controller.*       ← Speed presets & custom ms
-│       ├── wifi_manager.*           ← Wi-Fi + auto-reconnect
-│       ├── http_manager.*           ← HTTPS GET/POST to Vercel API  ← NEW v2.0
-│       ├── command_handler.*        ← Dispatches 13 command types   ← NEW v2.0
-│       ├── config_manager.*         ← NVS persistence (Wi-Fi, API URL, secret)
-│       ├── status_manager.*         ← Builds & pushes JSON telemetry
-│       ├── diagnostics.*            ← Watchdog, heap monitor, uptime
-│       └── platformio.ini           ← Build config (ArduinoJson only)
-│
-├── web/                             ← Next.js 14 web application
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx             ← Dashboard
-│   │   │   ├── manual/page.tsx      ← 4×4 relay grid manual control
-│   │   │   ├── effects/page.tsx     ← 30-effect library with preview
-│   │   │   ├── playlist/page.tsx    ← Drag-and-drop playlist manager
-│   │   │   ├── settings/page.tsx    ← Device settings
-│   │   │   ├── diagnostics/page.tsx ← System health monitor
-│   │   │   └── api/
-│   │   │       ├── esp/             ← ESP32-facing endpoints
-│   │   │       │   ├── register/    ← ESP32 self-registers on boot
-│   │   │       │   ├── status/      ← ESP32 pushes telemetry
-│   │   │       │   └── poll/        ← ESP32 picks up commands
-│   │   │       └── device/          ← Browser-facing endpoints
-│   │   │           └── [deviceId]/
-│   │   │               ├── command/ ← Queue a command
-│   │   │               ├── status/  ← Get device status
-│   │   │               ├── stream/  ← SSE real-time stream
-│   │   │               └── playlist/← Save/load playlists
-│   │   ├── components/              ← All UI components
-│   │   ├── hooks/                   ← use-device-status, use-device-command
-│   │   ├── lib/
-│   │   │   ├── mongodb.ts           ← MongoDB singleton connection
-│   │   │   ├── device-auth.ts       ← Authenticates ESP32 requests
-│   │   │   ├── auth.ts              ← NextAuth config
-│   │   │   ├── effects-data.ts      ← 30 effect definitions
-│   │   │   └── utils.ts             ← Helpers
-│   │   └── types/                   ← TypeScript interfaces
-│   ├── .env.example                 ← Environment variable template
-│   └── package.json
-│
-└── docs/
-    ├── hardware-wiring.md           ← GPIO wiring, power, safety
-    ├── mongodb-setup.md             ← MongoDB Atlas free-tier setup
-    ├── firmware-flashing.md         ← PlatformIO flash guide
-    ├── vercel-deployment.md         ← Vercel deploy + env vars
-    ├── device-registration.md       ← First-time device setup
-    └── troubleshooting.md           ← Common issues & fixes
-```
+### Option 1: VS Code with PlatformIO (Recommended)
+1. Plug the ESP32 into your computer via USB.
+2. In VS Code Terminal, run:
+   ```powershell
+   platformio run --target upload
+   ```
+3. Open Serial Monitor at **115200 baud** to see connection details.
+
+### Option 2: Arduino IDE
+1. Open [`ESP32_16CH_Relay/ESP32_16CH_Relay.ino`](ESP32_16CH_Relay/ESP32_16CH_Relay.ino).
+2. Select Board: **ESP32 Dev Module**.
+3. Select your ESP32 COM Port.
+4. Click **Upload**.
 
 ---
 
-## Quick Start
+## 🌐 Web Panel Usage
 
-### 1. Set Up MongoDB (5 minutes)
-Create a **free MongoDB Atlas** cluster at [mongodb.com/atlas](https://www.mongodb.com/atlas).
-→ See [docs/mongodb-setup.md](docs/mongodb-setup.md)
+### Connecting:
+1. **Via Direct Hotspot (No Router Required)**:
+   - Connect phone or PC to WiFi: `ESP32_Relay`
+   - Password: `12345678`
+   - Open browser: **`http://192.168.4.1`**
+2. **Via Local Home WiFi**:
+   - The ESP32 auto-connects to your WiFi (`loki`).
+   - Open browser: **`http://<station-ip>`** (displayed in Serial Monitor and on the top banner).
 
-### 2. Deploy to Vercel
-Push this repo to GitHub, import on Vercel, set environment variables.
-→ See [docs/vercel-deployment.md](docs/vercel-deployment.md)
-
-### 3. Flash ESP32
-Open `firmware/esp32_relay_chaser/` in VS Code with PlatformIO. Click Upload.
-Enter Wi-Fi credentials and your Vercel URL in the first-boot serial wizard.
-→ See [docs/firmware-flashing.md](docs/firmware-flashing.md)
-
-### 4. Register Your Device
-Copy the Device ID from Serial Monitor. Log into the web app. Register the device.
-→ See [docs/device-registration.md](docs/device-registration.md)
-
----
-
-## Environment Variables
-
-```env
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true&w=majority
-MONGODB_DB=relay_chaser
-NEXTAUTH_SECRET=your-32-char-random-secret
-NEXTAUTH_URL=https://your-app.vercel.app
-ADMIN_EMAIL=admin@relaychaser.local
-ADMIN_PASSWORD_HASH=$2b$10$...bcrypt-hash...
-NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
-```
-
-> **No MQTT variables. No Redis variables. No broker accounts needed.**
+### Controls Available:
+- **Lighting Presets**: 1-click preset switching (Grand Showcase, High Energy, Waves, Fireworks, Matrix).
+- **Master Controls**: All ON, All OFF, Pause / Resume, Auto ON/OFF, Next FX, Prev FX.
+- **Relay Patterns**: Odd (1,3,5...), Even (2,4,6...), Invert Matrix, Manual Override.
+- **Sliders**: Speed (20ms – 500ms) and Auto Cycle Time (2s – 30s).
+- **Interactive 16-Channel Matrix**: Touch any channel (CH1 – CH16) to instantly toggle that relay.
 
 ---
 
-## Hardware
+## 📡 REST JSON API
 
-| Relay | GPIO | | Relay | GPIO |
-|---|---|---|---|---|
-| 1 | 25 | | 9 | 16 |
-| 2 | 4  | | 10 | 17 |
-| 3 | 5  | | 11 | 18 |
-| 4 | 26 | | 12 | 19 |
-| 5 | 13 | | 13 | 21 |
-| 6 | 27 | | 14 | 22 |
-| 7 | 15 | | 15 | 23 |
-| 8 | 32 | | 16 | 33 |
+The ESP32 responds with full CORS headers, allowing external automation, Home Assistant, or Python scripts to control it:
 
-**Active-LOW logic**: `LOW` = Relay ON, `HIGH` = Relay OFF.
-→ See full wiring guide: [docs/hardware-wiring.md](docs/hardware-wiring.md)
-
----
-
-## Features
-
-### ESP32 Firmware
-- 30 professional chasing effects (Sequential, Knight Rider, Waterfall, Strobe, Spiral, and more)
-- Non-blocking effect engine (`millis()`-based, zero `delay()` in loop)
-- Cycle manager: run each effect N times before switching
-- Drag-and-drop playlist with configurable speeds
-- Speed control: 20ms – 2000ms (5 presets + custom)
-- Auto-reconnect Wi-Fi with exponential backoff
-- NVS flash persistence (survives power cycle)
-- Hardware watchdog protection
-- Offline operation: effects continue running without internet
-
-### Web Dashboard
-- Live connection status and relay grid
-- Manual 4×4 relay control grid
-- 30-effect library with animated CSS previews
-- Drag-and-drop playlist manager
-- Real-time SSE updates (no page refresh needed)
-- Dark professional UI (Tailwind CSS + shadcn/ui)
-- Mobile responsive
-
----
-
-## API Reference (ESP32 ↔ Vercel)
-
-| Method | Endpoint | Auth | Purpose |
+| Method | Endpoint | Query / Body | Description |
 |---|---|---|---|
-| POST | `/api/esp/register` | Device headers | ESP32 self-registers at boot |
-| POST | `/api/esp/status` | Device headers | ESP32 pushes telemetry every 2s |
-| GET | `/api/esp/poll` | Device headers | ESP32 picks up pending commands |
-| POST | `/api/device/{id}/command` | Session | Browser queues a command |
-| GET | `/api/device/{id}/status` | Session | Browser reads device state |
-| GET | `/api/device/{id}/stream` | Session | Browser SSE real-time stream |
+| `GET` | `/state` | None | Returns full JSON state (relays, effect, speed, mode, IPs) |
+| `GET` | `/preset` | `?id=0..4` | Switch to preset playlist (0=Showcase, 1=Energy, 2=Waves, etc.) |
+| `GET` | `/effect` | `?id=0..24` | Jump directly to effect ID (0 to 24) |
+| `GET` | `/relay` | `?ch=0..15&v=0\|1` | Directly toggle relay channel (0-15) ON (1) or OFF (0) |
+| `GET` | `/speed` | `?v=20..500` | Set pattern step speed in milliseconds |
+| `GET` | `/cycle` | `?v=2000..30000` | Set auto-cycle duration in milliseconds |
+| `GET` | `/cmd` | `?a=all_on` | Energize all 16 relays |
+| `GET` | `/cmd` | `?a=all_off` | De-energize all 16 relays (Standby) |
+| `GET` | `/cmd` | `?a=toggle_run` | Toggle Pause / Resume |
+| `GET` | `/cmd` | `?a=toggle_auto` | Toggle Auto cycling vs Single loop |
+| `GET` | `/cmd` | `?a=toggle_manual`| Toggle Manual relay override mode |
+| `GET` | `/cmd` | `?a=next` / `?a=prev` | Advance or go back in effect playlist |
+| `GET` | `/cmd` | `?a=odd` / `?a=even` / `?a=invert` | Relay pattern tools |
 
-**ESP32 authentication headers:**
+---
+
+## 📁 Repository Structure
+
 ```
-X-Device-Id: esp32_a1b2c3d4
-X-Device-Secret: abc123...32hexchars
+ESP32-16CH-Cloud-Chaser/
+├── ESP32_16CH_Relay/
+│   ├── ESP32_16CH_Relay.ino     ← Main Arduino sketch (25 effects, presets, state machine)
+│   └── web_page.h               ← Embedded HTML/CSS/JS cyberpunk web panel in PROGMEM
+├── platformio.ini               ← PlatformIO build configuration
+├── min_spiffs.csv               ← 3MB flash partition table
+└── README.md                    ← You are here
 ```
-
----
-
-## Local Development
-
-```bash
-cd web
-npm install
-# Edit .env.local — add your MONGODB_URI
-npm run dev
-```
-
-Open http://localhost:3000 — Login: `admin@relaychaser.local` / `admin`
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| ESP32 Firmware | Arduino C++, ArduinoJson, HTTPClient (built-in), NVS Preferences |
-| Web Frontend | Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, Framer Motion |
-| Web Backend | Next.js API Routes (Vercel Serverless) |
-| Database | MongoDB Atlas (free M0 tier) |
-| Auth | NextAuth.js (credentials + JWT) |
-| Real-time | Server-Sent Events (SSE) |
-| Deployment | Vercel |
-
----
-
-## Troubleshooting
-
-→ See [docs/troubleshooting.md](docs/troubleshooting.md) for common issues.
-
----
-
-## License
-
-MIT
-
