@@ -16,6 +16,10 @@
     Board: UCTRONICS 16-Channel Relay (12V Coil, 5V Active-LOW)
     Logic: 3.3V Control with Optocoupler Isolation
     Pins:  GPIO 25, 4, 5, 26, 13, 27, 15, 32, 16, 17, 18, 19, 21, 22, 23, 33
+
+  Zero External Library Dependencies:
+    Uses standard built-in ESP32 core libraries only.
+    No ArduinoJson or third-party package installation required!
  ════════════════════════════════════════════════════════════════
 */
 
@@ -24,7 +28,6 @@
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
-#include <ArduinoJson.h>
 #include <esp_task_wdt.h>
 #include "web_page.h"
 
@@ -162,6 +165,42 @@ const char* EFFECT_NAMES[TOTAL_EFFECTS] = {
   "Wipe and Fill",           // 23
   "Reverse Stack Builder"    // 24
 };
+
+// ══════════════════════════════════════════════════════════════
+//  LIGHTWEIGHT ZERO-DEPENDENCY JSON PARSER
+// ══════════════════════════════════════════════════════════════
+String extractJsonStr(const String& json, const String& key) {
+  String search = "\"" + key + "\":\"";
+  int start = json.indexOf(search);
+  if (start == -1) return "";
+  start += search.length();
+  int end = json.indexOf("\"", start);
+  if (end == -1) return "";
+  return json.substring(start, end);
+}
+
+int extractJsonInt(const String& json, const String& key, int defaultVal) {
+  String search = "\"" + key + "\":";
+  int start = json.indexOf(search);
+  if (start == -1) return defaultVal;
+  start += search.length();
+  while (start < (int)json.length() && (json[start] == ' ' || json[start] == '"')) start++;
+  int end = start;
+  while (end < (int)json.length() && (isdigit(json[end]) || json[end] == '-')) end++;
+  if (start == end) return defaultVal;
+  return json.substring(start, end).toInt();
+}
+
+bool extractJsonBool(const String& json, const String& key, bool defaultVal) {
+  String search = "\"" + key + "\":";
+  int start = json.indexOf(search);
+  if (start == -1) return defaultVal;
+  start += search.length();
+  while (start < (int)json.length() && json[start] == ' ') start++;
+  if (json.startsWith("true", start) || json.startsWith("1", start)) return true;
+  if (json.startsWith("false", start) || json.startsWith("0", start)) return false;
+  return defaultVal;
+}
 
 // ══════════════════════════════════════════════════════════════
 //  GLITCH-FREE GPIO INITIALIZATION
@@ -688,39 +727,36 @@ void pushCloudStatus() {
   https.addHeader("X-Device-Secret", DEVICE_SECRET);
   https.setTimeout(3500);
 
-  // Build JSON payload
-  StaticJsonDocument<1024> doc;
-  doc["deviceId"]    = DEVICE_ID;
-  doc["mode"]        = (currentMode == MODE_AUTO) ? "auto" :
-                       (currentMode == MODE_MANUAL) ? "manual" : "stopped";
-  doc["effect"]      = EFFECT_NAMES[currentEffect];
-  doc["effectIndex"] = currentEffect;
-  doc["cycle"]       = presetStepIndex + 1;
-  doc["totalCycles"] = PRESETS[currentPresetIndex].count;
-
   const PresetDefinition& p = PRESETS[currentPresetIndex];
   int nextIdx = (presetStepIndex + 1) % p.count;
-  doc["nextEffect"]  = EFFECT_NAMES[p.effects[nextIdx]];
 
-  doc["speed"]       = effectSpeed;
-  doc["uptime"]      = millis() / 1000;
-  doc["rssi"]        = WiFi.RSSI();
-  doc["heap"]        = ESP.getFreeHeap();
-  doc["minHeap"]     = ESP.getMinFreeHeap();
-  doc["ip"]          = WiFi.localIP().toString();
-  doc["firmware"]    = FIRMWARE_VER;
-  doc["presetIndex"] = currentPresetIndex;
-  doc["presetName"]  = PRESETS[currentPresetIndex].name;
-
-  JsonArray relays = doc.createNestedArray("relays");
+  // Build JSON payload without third-party library
+  String json = "{";
+  json += "\"deviceId\":\"" + String(DEVICE_ID) + "\",";
+  json += "\"mode\":\"" + String((currentMode == MODE_AUTO) ? "auto" :
+                                 (currentMode == MODE_MANUAL) ? "manual" : "stopped") + "\",";
+  json += "\"effect\":\"" + String(EFFECT_NAMES[currentEffect]) + "\",";
+  json += "\"effectIndex\":" + String(currentEffect) + ",";
+  json += "\"cycle\":" + String(presetStepIndex + 1) + ",";
+  json += "\"totalCycles\":" + String(p.count) + ",";
+  json += "\"nextEffect\":\"" + String(EFFECT_NAMES[p.effects[nextIdx]]) + "\",";
+  json += "\"speed\":" + String(effectSpeed) + ",";
+  json += "\"uptime\":" + String(millis() / 1000) + ",";
+  json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
+  json += "\"heap\":" + String(ESP.getFreeHeap()) + ",";
+  json += "\"minHeap\":" + String(ESP.getMinFreeHeap()) + ",";
+  json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+  json += "\"firmware\":\"" + String(FIRMWARE_VER) + "\",";
+  json += "\"presetIndex\":" + String(currentPresetIndex) + ",";
+  json += "\"presetName\":\"" + String(p.name) + "\",";
+  json += "\"relays\":[";
   for (int i = 0; i < NUM_RELAYS; i++) {
-    relays.add(relayState[i] ? 1 : 0);
+    json += String(relayState[i] ? 1 : 0);
+    if (i < NUM_RELAYS - 1) json += ",";
   }
+  json += "]}";
 
-  String jsonString;
-  serializeJson(doc, jsonString);
-
-  int httpCode = https.POST(jsonString);
+  int httpCode = https.POST(json);
   if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_CREATED) {
     cloudStatusDirty = false;
   } else {
@@ -747,34 +783,53 @@ void pollCloudCommands() {
   int httpCode = https.GET();
   if (httpCode == HTTP_CODE_OK) {
     String payload = https.getString();
-    DynamicJsonDocument doc(4096);
-    DeserializationError error = deserializeJson(doc, payload);
+    
+    // Parse commands array without external libraries
+    int idx = payload.indexOf("\"commands\":[");
+    if (idx != -1) {
+      idx += 12;
+      while (idx < (int)payload.length()) {
+        int start = payload.indexOf('{', idx);
+        if (start == -1) break;
+        int depth = 0;
+        int end = -1;
+        for (int i = start; i < (int)payload.length(); i++) {
+          if (payload[i] == '{') depth++;
+          else if (payload[i] == '}') {
+            depth--;
+            if (depth == 0) { end = i; break; }
+          }
+        }
+        if (end == -1) break;
 
-    if (!error && doc.containsKey("commands")) {
-      JsonArray commands = doc["commands"].as<JsonArray>();
-      for (JsonObject item : commands) {
-        String cmd = item["cmd"] | "";
-        JsonObject p = item["payload"].as<JsonObject>();
+        String item = payload.substring(start, end + 1);
+        idx = end + 1;
+
+        String cmd = extractJsonStr(item, "cmd");
+        if (cmd.length() == 0) continue;
 
         Serial.printf("[CLOUD] Command Received: %s\n", cmd.c_str());
 
         if (cmd == "SET_RELAY") {
-          int ch = p["channel"] | (p["ch"] | (p["relay"] | -1));
-          bool st = p["state"] | (p["v"] | 1);
+          int ch = extractJsonInt(item, "channel", -1);
+          if (ch == -1) ch = extractJsonInt(item, "ch", -1);
+          if (ch == -1) ch = extractJsonInt(item, "relay", -1);
+
+          bool st = extractJsonBool(item, "state", true);
+          if (item.indexOf("\"v\":0") != -1) st = false;
+
           if (ch >= 0 && ch < NUM_RELAYS) {
             currentMode = MODE_MANUAL;
             setRelay(ch, st);
             cloudStatusDirty = true;
-          } else if (p.containsKey("bitmask")) {
-            uint16_t mask = p["bitmask"];
+          } else if (item.indexOf("\"bitmask\":") != -1) {
+            uint16_t mask = (uint16_t)extractJsonInt(item, "bitmask", 0);
             currentMode = MODE_MANUAL;
-            for (int i = 0; i < NUM_RELAYS; i++) {
-              setRelay(i, (mask >> i) & 1);
-            }
+            for (int r = 0; r < NUM_RELAYS; r++) setRelay(r, (mask >> r) & 1);
             cloudStatusDirty = true;
-          } else if (p.containsKey("invert")) {
+          } else if (item.indexOf("\"invert\":") != -1) {
             currentMode = MODE_MANUAL;
-            for (int i = 0; i < NUM_RELAYS; i++) setRelay(i, !relayState[i]);
+            for (int r = 0; r < NUM_RELAYS; r++) setRelay(r, !relayState[r]);
             cloudStatusDirty = true;
           }
         } else if (cmd == "MASTER_ON") {
@@ -786,17 +841,20 @@ void pollCloudCommands() {
           allOff();
           cloudStatusDirty = true;
         } else if (cmd == "SET_EFFECT") {
-          int fx = p["effectIndex"] | (p["id"] | 0);
+          int fx = extractJsonInt(item, "effectIndex", -1);
+          if (fx == -1) fx = extractJsonInt(item, "id", 0);
           selectEffect(fx);
         } else if (cmd == "SET_PRESET") {
-          int pr = p["presetIndex"] | (p["id"] | 0);
+          int pr = extractJsonInt(item, "presetIndex", -1);
+          if (pr == -1) pr = extractJsonInt(item, "id", 0);
           selectPreset(pr);
         } else if (cmd == "SET_SPEED") {
-          int spd = p["speed"] | (p["v"] | 120);
+          int spd = extractJsonInt(item, "speed", -1);
+          if (spd == -1) spd = extractJsonInt(item, "v", 120);
           effectSpeed = constrain(spd, 20, 500);
           cloudStatusDirty = true;
         } else if (cmd == "SET_MODE") {
-          String m = p["mode"] | "";
+          String m = extractJsonStr(item, "mode");
           if (m == "auto") {
             currentMode = MODE_AUTO;
             autoTimer = millis();
@@ -822,6 +880,8 @@ void pollCloudCommands() {
         } else if (cmd == "REQUEST_STATE") {
           cloudStatusDirty = true;
         }
+
+        if (idx < (int)payload.length() && payload[idx] == ']') break;
       }
     }
   }
