@@ -5,7 +5,7 @@ import { getDb } from '@/lib/mongodb'
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -16,7 +16,7 @@ export async function DELETE(
       )
     }
 
-    const { deviceId } = params
+    const { deviceId } = await params
     if (!deviceId) {
       return NextResponse.json({ error: 'Device ID required' }, { status: 400 })
     }

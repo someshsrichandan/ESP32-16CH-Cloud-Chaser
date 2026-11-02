@@ -68,7 +68,7 @@ const DEFAULT_SYSTEM_PRESETS = [
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -79,7 +79,7 @@ export async function GET(
       )
     }
 
-    const { deviceId } = params
+    const { deviceId } = await params
     if (!deviceId) {
       return NextResponse.json({ error: 'Device ID is required' }, { status: 400 })
     }
@@ -127,7 +127,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -138,7 +138,7 @@ export async function POST(
       )
     }
 
-    const { deviceId } = params
+    const { deviceId } = await params
     if (!deviceId) {
       return NextResponse.json({ error: 'Device ID is required' }, { status: 400 })
     }
@@ -215,7 +215,7 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -226,7 +226,7 @@ export async function DELETE(
       )
     }
 
-    const { deviceId } = params
+    const { deviceId } = await params
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
 

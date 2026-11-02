@@ -8,14 +8,14 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   const session = await getServerSession(authOptions)
   if (!session) {
     return new Response('Unauthorized: Operator authentication required', { status: 401 })
   }
 
-  const { deviceId } = params
+  const { deviceId } = await params
   if (!deviceId) {
     return new Response('Device ID is required', { status: 400 })
   }

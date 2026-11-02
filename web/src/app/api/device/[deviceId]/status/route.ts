@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -19,7 +19,7 @@ export async function GET(
       )
     }
 
-    const { deviceId } = params
+    const { deviceId } = await params
     if (!deviceId) {
       return NextResponse.json({ error: 'Device ID is required' }, { status: 400 })
     }

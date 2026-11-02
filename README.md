@@ -1,27 +1,39 @@
-# ESP32 × 16-Channel Relay Controller PRO (v8.5)
+# ESP32 × 16-Channel Cloud Chaser PRO (v8.5)
 
-A high-performance, standalone 16-channel relay chaser and lighting sequencer for the **ESP32** and **UCTRONICS 16-Channel Relay Module**. Features an embedded cyberpunk dark-mode web controller hosted directly on the ESP32, 25 non-blocking chase effects, 5 curated presets, dual WiFi mode (SoftAP + Home WiFi Station), and glitch-free active-LOW hardware switching.
+A professional, enterprise-grade dual-control 16-channel relay sequencer and lighting automation platform for the **ESP32** and **UCTRONICS 16-Channel Relay Module**. 
 
-No cloud brokers, no external servers, and zero delay timers — runs completely standalone or on your local WiFi network.
+Features a **unified dual-control architecture**:
+1. **Local Cyberpunk Web Controller**: Hosted directly on the ESP32 in PROGMEM flash on port 80 (accessible via SoftAP `192.168.4.1` or Local LAN).
+2. **Cloud Web Application**: Built with **Next.js 16 (Turbopack)**, **React 19**, **TypeScript**, **Tailwind CSS**, and **MongoDB Atlas**, deployed to Vercel ([esp-32-16-ch-cloud-chaser.vercel.app](https://esp-32-16-ch-cloud-chaser.vercel.app)).
+
+Control all 16 relays, 25 non-blocking chase effects, 5 curated presets, and live timing from either the local physical network or anywhere in the world with **seamless two-way real-time state synchronization**.
 
 ---
 
 ## ⚡ Key Highlights
 
-- **Embedded Cyberpunk Web Panel**: Beautiful, dark-mode web GUI served directly from ESP32 PROGMEM flash memory on port 80.
-- **Dual WiFi Mode (`WIFI_AP_STA`)**:
-  - **Direct Access Point**: Connect to `ESP32_Relay` (Password: `12345678`) and open `http://192.168.4.1`.
-  - **Local Home WiFi**: Connects to your router (`loki`) in the background so you can access the panel from any browser on your home network.
-- **25 Non-Blocking Chase Effects**: Left/Right chaser, bounce, center-out, zip-unzip, binary counter, sparkle, heartbeat, cylon eye, fireworks, meteor, strobe, and stack build — all powered by non-blocking `millis()` state machines.
+- **Dual-Control Architecture (Local + Cloud Everywhere)**:
+  - **Local Hotspot (SoftAP)**: Connect to `ESP32_Relay` (Password: `12345678`) → `http://192.168.4.1`.
+  - **Local Home Network (Station)**: Auto-connects to your router (`loki`) → `http://192.168.1.37`.
+  - **Remote Cloud Controller**: Hosted on Vercel backed by MongoDB Atlas → control from any browser or smartphone worldwide.
+- **Next.js 16 & React 19 Web App (`web/`)**:
+  - Latest **Next.js 16.4.3 with Turbopack** and **React 19.3.1**.
+  - Serverless HTTPS REST APIs (`/api/esp/status`, `/api/esp/poll`, `/api/device/[deviceId]/command`).
+  - Real-time Server-Sent Events (SSE) telemetry stream for instantaneous UI updates.
+  - Interactive 4×4 manual relay matrix, velocity sliders, preset selectors, and diagnostics.
+- **25 Fully Non-Blocking Lighting Effects**:
+  - 100% non-blocking timing powered by hardware `millis()` state machine — zero `delay()` calls.
+  - Left/Right chaser, bounce, center-out, zip-unzip, binary counter, sparkle, heartbeat, cylon eye, fireworks, meteor, strobe, cross-fade, and stack build.
 - **5 Curated Lighting Presets**:
-  1. 🌟 **Grand Showcase** — Auto-cycles all 25 effects
-  2. ⚡ **High Energy & Strobes** — Rapid flashes, sparkles & heartbeats
-  3. 🌊 **Waves & Smooth Chasers** — Cylon scanners, fluid chases & bounces
-  4. 🌧️ **Atmospheric & Fireworks** — Cascades, meteors, raindrops & explosions
-  5. 🎭 **Matrix & Dual Bounce** — Alternating grids, counter-crossing dots & binary
-- **Glitch-Free Active-LOW Safe Boot**: 3-step GPIO initialization (`INPUT_PULLUP` → latch `HIGH` → `OUTPUT`) prevents false relay clicks on boot.
-- **Unified State Machine**: Smooth transitions between **Auto Run**, **Single FX Loop**, **Manual Relay Override**, and **Master OFF**.
-- **Hardware Watchdog**: 30-second hardware watchdog protects against hangs.
+  1. 🌟 **Grand Showcase** — Sequentially cycles through all 25 native lighting effects.
+  2. ⚡ **High Energy & Strobes** — Double dot, sparkles, heartbeat pulses, theater and strobe flashes.
+  3. 🌊 **Waves & Smooth Chasers** — Smooth progressive sweeps, cylon scanner, and 5-channel Knight Rider.
+  4. 🌧️ **Atmospheric & Fireworks** — Cascading waterfalls, meteor showers, raindrops, and fireworks.
+  5. 🎭 **Matrix & Dual Bounce** — Dual converging dots, binary counter, cross-fades, and alternating odd/even.
+- **Glitch-Free Active-LOW Safe Boot**:
+  - 3-step GPIO initialization (`INPUT_PULLUP` → latch `HIGH` → `OUTPUT`) guarantees zero relay chattering or spurious clicks during power-up or reboot.
+- **Hardware Watchdog**:
+  - 30-second hardware watchdog timer (`esp_task_wdt`) prevents firmware hangs.
 
 ---
 
@@ -63,74 +75,105 @@ No cloud brokers, no external servers, and zero delay timers — runs completely
 
 ---
 
-## 🚀 How to Flash & Run
+## 📁 Repository Structure
 
-### Option 1: VS Code with PlatformIO (Recommended)
-1. Plug the ESP32 into your computer via USB.
-2. In VS Code Terminal, run:
-   ```powershell
+```
+ESP32-16CH-Cloud-Chaser/
+├── ESP32_16CH_Relay/
+│   ├── ESP32_16CH_Relay.ino     ← Main Arduino sketch (25 effects, dual WiFi, cloud HTTP client)
+│   └── web_page.h               ← Embedded HTML/CSS/JS cyberpunk web panel in PROGMEM
+├── web/                         ← Next.js 16 Web Application (Turbopack + React 19 + Tailwind)
+│   ├── src/
+│   │   ├── app/                 ← App Router pages (/manual, /effects, /playlist, /settings)
+│   │   │   └── api/             ← REST & SSE endpoints (/api/esp/*, /api/device/*)
+│   │   ├── components/          ← UI components (RelayGrid, SpeedSlider, PresetCards)
+│   │   ├── context/             ← DeviceProvider (live hardware pairing & status state)
+│   │   └── lib/                 ← MongoDB Atlas connection & effect definitions
+│   ├── package.json             ← Next.js 16.4, React 19.3, Lucide, Tailwind, MongoDB
+│   └── next.config.mjs          ← Next.js configuration
+├── platformio.ini               ← PlatformIO build configuration
+├── min_spiffs.csv               ← 3MB flash partition table
+└── README.md                    ← Complete documentation
+```
+
+---
+
+## 🚀 How to Flash Firmware
+
+### Using PlatformIO (Recommended)
+1. Plug the ESP32 into your PC via USB.
+2. Build and upload with one command:
+   ```bash
    platformio run --target upload
    ```
-3. Open Serial Monitor at **115200 baud** to see connection details.
+3. Open Serial Monitor at **115200 baud** to see Wi-Fi status and cloud synchronization:
+   ```bash
+   platformio device monitor
+   ```
 
-### Option 2: Arduino IDE
+### Using Arduino IDE
 1. Open [`ESP32_16CH_Relay/ESP32_16CH_Relay.ino`](ESP32_16CH_Relay/ESP32_16CH_Relay.ino).
-2. Select Board: **ESP32 Dev Module**.
-3. Select your ESP32 COM Port.
-4. Click **Upload**.
+2. Install `ArduinoJson` (v6.x) via Library Manager.
+3. Select Board: **ESP32 Dev Module**, Partition Scheme: **Minimal SPIFFS (Large APPS with OTA)**.
+4. Select your COM Port and click **Upload**.
 
 ---
 
-## 🌐 Web Panel Usage
+## 💻 Running the Web Application
 
-### Connecting:
-1. **Via Direct Hotspot (No Router Required)**:
-   - Connect phone or PC to WiFi: `ESP32_Relay`
-   - Password: `12345678`
-   - Open browser: **`http://192.168.4.1`**
-2. **Via Local Home WiFi**:
-   - The ESP32 auto-connects to your WiFi (`loki`).
-   - Open browser: **`http://<station-ip>`** (displayed in Serial Monitor and on the top banner).
+### Local Development
+```bash
+cd web
+npm install
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Controls Available:
-- **Lighting Presets**: 1-click preset switching (Grand Showcase, High Energy, Waves, Fireworks, Matrix).
-- **Master Controls**: All ON, All OFF, Pause / Resume, Auto ON/OFF, Next FX, Prev FX.
-- **Relay Patterns**: Odd (1,3,5...), Even (2,4,6...), Invert Matrix, Manual Override.
-- **Sliders**: Speed (20ms – 500ms) and Auto Cycle Time (2s – 30s).
-- **Interactive 16-Channel Matrix**: Touch any channel (CH1 – CH16) to instantly toggle that relay.
+### Production Build
+```bash
+cd web
+npm run build
+npm start
+```
+
+### Environment Variables (`web/.env.local`)
+```env
+NEXTAUTH_SECRET=your-secure-random-secret
+NEXTAUTH_URL=http://localhost:3000
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DB=relay_chaser
+ADMIN_EMAIL=admin@relaychaser.local
+ADMIN_PASSWORD_HASH=$2b$10$...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
 
 ---
 
-## 📡 REST JSON API
+## 🌐 Web Panel Controls & APIs
 
-The ESP32 responds with full CORS headers, allowing external automation, Home Assistant, or Python scripts to control it:
+### 1. Local Panel Endpoints (Port 80)
+The embedded web server responds directly on `http://192.168.4.1` and `http://192.168.1.37`:
 
 | Method | Endpoint | Query / Body | Description |
 |---|---|---|---|
-| `GET` | `/state` | None | Returns full JSON state (relays, effect, speed, mode, IPs) |
-| `GET` | `/preset` | `?id=0..4` | Switch to preset playlist (0=Showcase, 1=Energy, 2=Waves, etc.) |
+| `GET` | `/state` | None | Full JSON state (relays, effect, speed, mode, IPs) |
+| `GET` | `/preset` | `?id=0..4` | Switch to preset playlist (0=Showcase, 1=Energy, etc.) |
 | `GET` | `/effect` | `?id=0..24` | Jump directly to effect ID (0 to 24) |
-| `GET` | `/relay` | `?ch=0..15&v=0\|1` | Directly toggle relay channel (0-15) ON (1) or OFF (0) |
-| `GET` | `/speed` | `?v=20..500` | Set pattern step speed in milliseconds |
+| `GET` | `/relay` | `?ch=0..15&v=0\|1` | Toggle individual relay ON (1) or OFF (0) |
+| `GET` | `/speed` | `?v=20..500` | Set pattern speed in milliseconds |
 | `GET` | `/cycle` | `?v=2000..30000` | Set auto-cycle duration in milliseconds |
-| `GET` | `/cmd` | `?a=all_on` | Energize all 16 relays |
-| `GET` | `/cmd` | `?a=all_off` | De-energize all 16 relays (Standby) |
+| `GET` | `/cmd` | `?a=all_on` | Master ON: Energize all 16 relays |
+| `GET` | `/cmd` | `?a=all_off` | Master OFF: De-energize all 16 relays |
 | `GET` | `/cmd` | `?a=toggle_run` | Toggle Pause / Resume |
 | `GET` | `/cmd` | `?a=toggle_auto` | Toggle Auto cycling vs Single loop |
 | `GET` | `/cmd` | `?a=toggle_manual`| Toggle Manual relay override mode |
 | `GET` | `/cmd` | `?a=next` / `?a=prev` | Advance or go back in effect playlist |
 | `GET` | `/cmd` | `?a=odd` / `?a=even` / `?a=invert` | Relay pattern tools |
 
----
+### 2. Cloud Serverless APIs (Next.js + MongoDB)
+Endpoints hosted on [esp-32-16-ch-cloud-chaser.vercel.app](https://esp-32-16-ch-cloud-chaser.vercel.app):
 
-## 📁 Repository Structure
-
-```
-ESP32-16CH-Cloud-Chaser/
-├── ESP32_16CH_Relay/
-│   ├── ESP32_16CH_Relay.ino     ← Main Arduino sketch (25 effects, presets, state machine)
-│   └── web_page.h               ← Embedded HTML/CSS/JS cyberpunk web panel in PROGMEM
-├── platformio.ini               ← PlatformIO build configuration
-├── min_spiffs.csv               ← 3MB flash partition table
-└── README.md                    ← You are here
-```
+- `POST /api/esp/status` — Pushed by ESP32 every 2.5s (or on state change) to update MongoDB.
+- `GET /api/esp/poll` — Polled by ESP32 every 1.2s to retrieve and execute queued cloud commands.
+- `POST /api/device/[deviceId]/command` — Queues remote commands (`SET_PRESET`, `SET_RELAY`, `MASTER_ON`, `MASTER_OFF`, `SET_SPEED`, `SET_EFFECT`).
+- `GET /api/device/[deviceId]/stream` — Live Server-Sent Events (SSE) telemetry stream for the web UI.

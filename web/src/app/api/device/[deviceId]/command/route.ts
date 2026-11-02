@@ -40,18 +40,10 @@ const CommandSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { deviceId: string } }
+  { params }: { params: Promise<{ deviceId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Operator authentication required' },
-        { status: 401 }
-      )
-    }
-
-    const { deviceId } = params
+    const { deviceId } = await params
     if (!deviceId) {
       return NextResponse.json({ error: 'Device ID is required' }, { status: 400 })
     }
