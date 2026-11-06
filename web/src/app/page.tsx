@@ -152,7 +152,7 @@ export default function DashboardPage() {
               onClick={() => handleAction('toggle_run', 'Sequence Toggled')}
               className="text-xs font-semibold"
             >
-              {currentMode === 'stopped' ? (
+              {currentMode === 'stopped' || currentMode === 'all_on' ? (
                 <>
                   <Play className="mr-1.5 h-3.5 w-3.5 fill-cyan-400" />
                   Resume Run
@@ -216,22 +216,30 @@ export default function DashboardPage() {
           {/* Master Relay State Triggers */}
           <div className="flex items-center space-x-2">
             <Button
-              variant="outline"
+              variant={currentMode === 'all_on' ? 'cyanGlow' : 'outline'}
               size="sm"
               disabled={isPending}
               onClick={() => handleAction('all_on', 'Master Energized: ALL ON')}
-              className="h-8 text-xs border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"
+              className={`h-8 text-xs transition-all ${
+                currentMode === 'all_on'
+                  ? 'border-emerald-500 bg-emerald-600/30 text-emerald-300 shadow-glow-green font-bold ring-2 ring-emerald-500/40'
+                  : 'border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10'
+              }`}
             >
               <Power className="mr-1.5 h-3.5 w-3.5" />
               Master ON
             </Button>
 
             <Button
-              variant="outline"
+              variant={currentMode === 'stopped' ? 'destructive' : 'outline'}
               size="sm"
               disabled={isPending}
               onClick={() => handleAction('all_off', 'Master De-energized: ALL OFF')}
-              className="h-8 text-xs text-zinc-300 hover:text-red-400"
+              className={`h-8 text-xs transition-all ${
+                currentMode === 'stopped'
+                  ? 'border-rose-500 bg-rose-600/30 text-rose-300 shadow-glow-red font-bold ring-2 ring-rose-500/40'
+                  : 'text-zinc-300 hover:text-red-400 hover:border-red-500/40'
+              }`}
             >
               <PowerOff className="mr-1.5 h-3.5 w-3.5" />
               Master OFF

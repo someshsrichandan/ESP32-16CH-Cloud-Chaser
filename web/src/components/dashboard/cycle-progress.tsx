@@ -33,24 +33,28 @@ export function CycleProgress({ status }: CycleProgressProps) {
         <div className="flex items-center justify-between rounded-lg border border-zinc-800/80 bg-zinc-950/40 p-3">
           <div>
             <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500">
-              Playing Effect
+              {mode === 'all_on' ? 'System State' : mode === 'stopped' ? 'System State' : 'Playing Effect'}
             </span>
             <div className="flex items-center space-x-2 mt-0.5">
-              <PlayCircle className="h-4 w-4 text-cyan-400" />
-              <span className="font-bold text-base text-zinc-100">{currentEffect}</span>
-              <span className="font-mono text-xs text-zinc-500">
-                (FX {status?.effectIndex ?? 0})
+              <PlayCircle className={`h-4 w-4 ${mode === 'all_on' ? 'text-emerald-400' : mode === 'stopped' ? 'text-rose-400' : 'text-cyan-400'}`} />
+              <span className="font-bold text-base text-zinc-100">
+                {mode === 'all_on' ? 'Master ALL ON (Active)' : mode === 'stopped' ? 'Master Standby (ALL OFF)' : currentEffect}
               </span>
+              {mode !== 'all_on' && mode !== 'stopped' && (
+                <span className="font-mono text-xs text-zinc-500">
+                  (FX {status?.effectIndex ?? 0})
+                </span>
+              )}
             </div>
           </div>
 
           <div className="text-right">
             <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500">
-              Next Queued
+              {mode === 'all_on' || mode === 'stopped' ? 'Status' : 'Next Queued'}
             </span>
             <div className="flex items-center justify-end space-x-1.5 mt-0.5 text-zinc-400 text-xs">
               <FastForward className="h-3.5 w-3.5 text-zinc-500" />
-              <span>{status?.nextEffect || 'Auto Sequence'}</span>
+              <span>{mode === 'all_on' ? '16 CH High' : mode === 'stopped' ? 'All Channels Open' : (status?.nextEffect || 'Auto Sequence')}</span>
             </div>
           </div>
         </div>

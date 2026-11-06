@@ -28,8 +28,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine operational mode
-    let mode: 'manual' | 'auto' | 'stopped' = 'auto'
-    if (body.mode === 'manual' || body.mode === 'auto' || body.mode === 'stopped') {
+    let mode: 'manual' | 'auto' | 'stopped' | 'all_on' = 'auto'
+    if (body.mode === 'manual' || body.mode === 'auto' || body.mode === 'stopped' || body.mode === 'all_on') {
       mode = body.mode
     } else if (body.m === 1) {
       mode = 'manual'

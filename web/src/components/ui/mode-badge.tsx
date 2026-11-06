@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { Badge } from './badge'
 import { DeviceMode } from '@/types/device'
-import { Play, Pause, Sliders } from 'lucide-react'
+import { Play, Pause, Sliders, Zap } from 'lucide-react'
 
 interface ModeBadgeProps {
   mode: DeviceMode
@@ -10,6 +10,16 @@ interface ModeBadgeProps {
 
 export function ModeBadge({ mode, className }: ModeBadgeProps) {
   switch (mode) {
+    case 'all_on':
+      return (
+        <Badge
+          variant="default"
+          className={`flex items-center space-x-1.5 bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-glow-green uppercase font-mono tracking-wider ${className}`}
+        >
+          <Zap className="h-3 w-3 fill-emerald-400 text-emerald-400" />
+          <span>Master ALL ON</span>
+        </Badge>
+      )
     case 'auto':
       return (
         <Badge
@@ -38,7 +48,7 @@ export function ModeBadge({ mode, className }: ModeBadgeProps) {
           className={`flex items-center space-x-1.5 bg-zinc-800 text-zinc-400 border-zinc-700 uppercase font-mono tracking-wider ${className}`}
         >
           <Pause className="h-3 w-3 text-zinc-400" />
-          <span>Standby / Idle</span>
+          <span>Standby / ALL OFF</span>
         </Badge>
       )
   }

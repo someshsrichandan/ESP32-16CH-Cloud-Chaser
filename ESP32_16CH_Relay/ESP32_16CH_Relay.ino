@@ -73,7 +73,8 @@ enum SystemMode {
   MODE_AUTO,      // Automatically cycles through preset playlist
   MODE_EFFECT,    // Loops single selected effect
   MODE_MANUAL,    // Manual channel control (effects halted)
-  MODE_OFF        // Master Off / Standby
+  MODE_OFF,       // Master Off / Standby
+  MODE_ALL_ON     // Master All Relays ON (effects halted)
 };
 
 SystemMode currentMode = MODE_AUTO;
@@ -576,7 +577,8 @@ void sendStateJson() {
   s += "\"s\":" + String(effectSpeed) + ",";
   s += "\"m\":\"" + String(currentMode == MODE_AUTO ? "auto" :
                            currentMode == MODE_EFFECT ? "effect" :
-                           currentMode == MODE_MANUAL ? "manual" : "off") + "\",";
+                           currentMode == MODE_MANUAL ? "manual" :
+                           currentMode == MODE_ALL_ON ? "all_on" : "off") + "\",";
   s += "\"c\":" + String(autoCycleTime / 1000) + ",";
   s += "\"p\":" + String(currentPresetIndex) + ",";
   s += "\"pn\":\"" + String(PRESETS[currentPresetIndex].name) + "\",";
@@ -638,19 +640,22 @@ void handleCmd() {
   if (server.hasArg("a")) {
     String a = server.arg("a");
     if (a == "all_on") {
-      currentMode = MODE_MANUAL;
+      currentMode = MODE_ALL_ON;
       allOn();
+      cloudStatusDirty = true;
     } else if (a == "all_off") {
       currentMode = MODE_OFF;
       allOff();
+      cloudStatusDirty = true;
     } else if (a == "toggle_run") {
-      if (currentMode == MODE_OFF) {
+      if (currentMode == MODE_OFF || currentMode == MODE_ALL_ON) {
         currentMode = MODE_AUTO;
         autoTimer = millis();
       } else {
         currentMode = MODE_OFF;
         allOff();
       }
+      cloudStatusDirty = true;
     } else if (a == "toggle_auto") {
       if (currentMode == MODE_AUTO) {
         currentMode = MODE_EFFECT;
@@ -734,7 +739,8 @@ void pushCloudStatus() {
   String json = "{";
   json += "\"deviceId\":\"" + String(DEVICE_ID) + "\",";
   json += "\"mode\":\"" + String((currentMode == MODE_AUTO) ? "auto" :
-                                 (currentMode == MODE_MANUAL) ? "manual" : "stopped") + "\",";
+                                 (currentMode == MODE_MANUAL) ? "manual" :
+                                 (currentMode == MODE_ALL_ON) ? "all_on" : "stopped") + "\",";
   json += "\"effect\":\"" + String(EFFECT_NAMES[currentEffect]) + "\",";
   json += "\"effectIndex\":" + String(currentEffect) + ",";
   json += "\"cycle\":" + String(presetStepIndex + 1) + ",";
@@ -833,7 +839,7 @@ void pollCloudCommands() {
             cloudStatusDirty = true;
           }
         } else if (cmd == "MASTER_ON") {
-          currentMode = MODE_MANUAL;
+          currentMode = MODE_ALL_ON;
           allOn();
           cloudStatusDirty = true;
         } else if (cmd == "MASTER_OFF" || cmd == "EMERGENCY_STOP" || cmd == "STOP") {
@@ -863,6 +869,9 @@ void pollCloudCommands() {
           } else if (m == "stopped" || m == "off") {
             currentMode = MODE_OFF;
             allOff();
+          } else if (m == "all_on") {
+            currentMode = MODE_ALL_ON;
+            allOn();
           }
           cloudStatusDirty = true;
         } else if (cmd == "PAUSE") {

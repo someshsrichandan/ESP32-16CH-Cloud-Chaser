@@ -1,4 +1,4 @@
-export type DeviceMode = 'auto' | 'manual' | 'stopped'
+export type DeviceMode = 'auto' | 'manual' | 'stopped' | 'all_on'
 
 export enum CommandType {
   RELAY = 'relay',

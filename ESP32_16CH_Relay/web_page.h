@@ -21,6 +21,7 @@ header p{color:var(--dm);font-size:.74rem;margin-top:4px;}
 .bm.au{background:#0a1e0a;border-color:#16a34a;color:#4ade80;}
 .bm.mn{background:#1e120a;border-color:#b45309;color:#fcd34d;}
 .bm.of{background:#1e0a0a;border-color:#991b1b;color:#f87171;}
+.bm.on{background:#062312;border-color:#059669;color:#34d399;box-shadow:0 0 10px rgba(52,211,153,.35);}
 .dot{width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block;margin-right:6px;}
 .dot.ok{background:#22c55e;box-shadow:0 0 8px #22c55e;animation:pu 1.4s ease-in-out infinite;}
 @keyframes pu{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
@@ -37,6 +38,8 @@ header p{color:var(--dm);font-size:.74rem;margin-top:4px;}
 .te{background:linear-gradient(135deg,#0891b2,#164e63);color:#fff;}
 .gr{background:linear-gradient(135deg,#4b5563,#1f2937);color:#fff;}
 .hi{outline:2px solid rgba(167,139,250,.9);outline-offset:2px;}
+.btn.gn.hi{outline:2.5px solid #34d399;outline-offset:2px;box-shadow:0 0 14px rgba(52,211,153,.7);}
+.btn.rd.hi{outline:2.5px solid #f87171;outline-offset:2px;box-shadow:0 0 14px rgba(248,113,113,.7);}
 .amhi{outline:2px solid rgba(251,191,36,.9);outline-offset:2px;}
 .slr{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-top:10px;}
 .sw{display:flex;align-items:center;gap:9px;}
@@ -108,8 +111,8 @@ const char PHTML[] PROGMEM = R"===(
 <div class="card">
   <h2>&#9881; Playback & Master Controls</h2>
   <div class="row">
-    <button class="btn gn" onclick="cmd('all_on')">&#9899; All ON</button>
-    <button class="btn rd" onclick="cmd('all_off')">&#9898; All OFF</button>
+    <button class="btn gn" id="bAllOn" onclick="cmd('all_on')">&#9899; All ON</button>
+    <button class="btn rd" id="bAllOff" onclick="cmd('all_off')">&#9898; All OFF</button>
     <button class="btn bl" id="bR" onclick="cmd('toggle_run')">&#9646;&#9646; Pause</button>
     <button class="btn pu" id="bA" onclick="cmd('toggle_auto')">&#8635; Auto: ON</button>
     <button class="btn am" onclick="cmd('prev')">&#9664; Prev FX</button>
@@ -253,13 +256,18 @@ function apply(d){
 
   var isAuto=S.m==='auto';
   var isMan=S.m==='manual';
-  var isOff=S.m==='off';
+  var isOff=S.m==='off'||S.m==='stopped';
+  var isOn=S.m==='all_on';
 
-  var mt=isMan?'MANUAL':isAuto?'AUTO':isOff?'OFF / PAUSED':'LOOP FX';
+  var mt=isOn?'ALL ON':isOff?'ALL OFF':isMan?'MANUAL':isAuto?'AUTO RUN':'SINGLE FX';
   document.getElementById('sM').textContent=mt;
-  document.getElementById('sM').className='bx bm '+(isMan?'mn':isAuto?'au':isOff?'of':'be');
+  document.getElementById('sM').className='bx bm '+(isOn?'on':isOff?'of':isMan?'mn':isAuto?'au':'be');
 
-  document.getElementById('bR').textContent=(isOff)?'&#9654; Resume':'&#9646;&#9646; Pause';
+  var bOn=document.getElementById('bAllOn'), bOff=document.getElementById('bAllOff');
+  if(bOn) bOn.className='btn gn'+(isOn?' hi':'');
+  if(bOff) bOff.className='btn rd'+(isOff?' hi':'');
+
+  document.getElementById('bR').textContent=(isOff||isOn)?'&#9654; Resume':'&#9646;&#9646; Pause';
   document.getElementById('bA').textContent='&#8635; Auto: '+(isAuto?'ON':'OFF');
   document.getElementById('bA').className='btn pu'+(isAuto?' hi':'');
 
